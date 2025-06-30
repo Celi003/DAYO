@@ -1,10 +1,10 @@
 from django.contrib.auth import authenticate, login
+from django.db.models import Sum, Count
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import permissions
 import openpyxl
 from django.http import HttpResponse
 from reportlab.lib import colors
@@ -13,6 +13,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 from .serializers import *
 from .permissions import *
 from .task import *
+
 
 class LoginView(APIView):
     def post(self, request):
@@ -194,13 +195,61 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         filters = {k: v for k, v in filters.items() if v is not None}
 
         queryset = self.get_queryset().filter(**filters)
-        stats = {
-            'total_billed': queryset.aggregate(Sum('billed_amount'))['billed_amount__sum'] or 0,
-            'total_paid': queryset.aggregate(Sum('paid_amount'))['paid_amount__sum'] or 0,
-            'total_rejected': sum(invoice.rejected_amount() for invoice in queryset),
-            'total_remaining': sum(invoice.remaining_amount() for invoice in queryset),
-        }
-        return Response(stats)
+        # Aggregate by month
+        monthly_stats = queryset.values('invoice_month__year', 'invoice_month__month').annotate(
+            total_billed=Sum('billed_amount'),
+            total_paid=Sum('paid_amount'),
+            total_rejected=Sum('rejections__rejected_amount'),
+            total_remaining=Sum('billed_amount') - Sum('paid_amount') - Sum('rejections__rejected_amount'),
+            payment_count=Count('payments'),
+        ).order_by('invoice_month__year', 'invoice_month__month')
+
+        stats = [
+            {
+                'year': stat['invoice_month__year'],
+                'month': stat['invoice_month__month'],
+                'total_billed': stat['total_billed'] or 0,
+                'total_paid': stat['total_paid'] or 0,
+                'total_rejected': stat['total_rejected'] or 0,
+                'total_remaining': stat['total_remaining'] or 0,
+                'payment_count': stat['payment_count'],
+            }
+            for stat in monthly_stats
+        ]
+
+        return Response({'monthly_stats': stats})
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsActiveProvider | IsAdmin])
+    def payment_details(self, request):
+        year = request.query_params.get('year')
+        month = request.query_params.get('month')
+        if not (year and month):
+            return Response({'error': 'Year and month parameters are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            year = int(year)
+            month = int(month)
+        except ValueError:
+            return Response({'error': 'Year and month must be integers'}, status=status.HTTP_400_BAD_REQUEST)
+
+        queryset = self.get_queryset().filter(
+            invoice_month__year=year,
+            invoice_month__month=month
+        )
+
+        payments = Payment.objects.filter(invoice__in=queryset).select_related('invoice')
+        payment_data = [
+            {
+                'id': payment.id,
+                'invoice_number': payment.invoice.invoice_number,
+                'payment_date': payment.payment_date,
+                'amount': float(payment.amount),
+                'payment_method': payment.payment_method,
+            }
+            for payment in payments
+        ]
+
+        return Response({'payments': payment_data})
 
     @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated, IsActiveProvider | IsAdmin])
     def generate_reclamation_letter(self, request, pk=None):
@@ -318,3 +367,152 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             return response
 
         return Response({'error': 'Invalid format'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsActiveProvider | IsAdmin])
+    def download_template(self, request):
+        workbook = openpyxl.Workbook()
+
+        # Brokers Sheet
+        sheet = workbook.create_sheet('Brokers')
+        sheet.append(['Name'])
+        # sheet.append(['DAYO'])  # Example data
+        # sheet.append(['OLEA'])
+
+        # Companies Sheet
+        sheet = workbook.create_sheet('Companies')
+        sheet.append(['Name', 'Broker Name', 'Contact Email'])
+        # sheet.append(['NSIA', 'DAYO', 'nsia@example.com'])
+        # sheet.append(['SUNU', 'DAYO', 'sunu@example.com'])
+
+        # Invoices Sheet
+        sheet = workbook.create_sheet('Invoices')
+        sheet.append(['Provider Name', 'Broker Name', 'Company Name', 'Invoice Number', 'Invoice Month (YYYY-MM)',
+                      'Billed Amount', 'Paid Amount', 'Status'])
+        # sheet.append(['Provider1', 'DAYO', 'NSIA', 'INV001', '2025-01', 150000, 100000, 'PARTIAL'])
+
+        # Remove default sheet
+        workbook.remove(workbook['Sheet'])
+
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=data_import_template.xlsx'
+        workbook.save(response)
+        return response
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsActiveProvider | IsAdmin])
+    def import_data(self, request, status=None):
+        if 'file' not in request.FILES:
+            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+
+        file = request.FILES['file']
+        if not file.name.endswith('.xlsx'):
+            return Response({'error': 'File must be an Excel file (.xlsx)'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            workbook = openpyxl.load_workbook(file)
+        except Exception as e:
+            return Response({'error': f'Invalid Excel file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        errors = []
+        created_records = {'brokers': 0, 'companies': 0, 'invoices': 0}
+
+        # Import Brokers
+        if 'Brokers' in workbook.sheetnames:
+            sheet = workbook['Brokers']
+            if sheet.max_row < 2 or sheet[1][0].value != 'Name':
+                errors.append('Brokers sheet: Missing or incorrect header (expected "Name")')
+            else:
+                for row in sheet.iter_rows(min_row=2, values_only=True):
+                    name = row[0]
+                    if not name:
+                        continue
+                    if request.user.userprofile.role == 'ADMIN':
+                        Broker.objects.get_or_create(name=name)
+                        created_records['brokers'] += 1
+                    else:
+                        errors.append('Only admins can import brokers')
+                        break
+
+        # Import Companies
+        if 'Companies' in workbook.sheetnames:
+            sheet = workbook['Companies']
+            if sheet.max_row < 2 or tuple(cell.value for cell in sheet[1][:3]) != (
+            'Name', 'Broker Name', 'Contact Email'):
+                errors.append(
+                    'Companies sheet: Missing or incorrect headers (expected "Name", "Broker Name", "Contact Email")')
+            else:
+                for row in sheet.iter_rows(min_row=2, values_only=True):
+                    name, broker_name, contact_email = row[:3]
+                    if not (name and broker_name):
+                        continue
+                    if request.user.userprofile.role == 'ADMIN':
+                        try:
+                            broker = Broker.objects.get(name=broker_name)
+                            Company.objects.get_or_create(
+                                name=name,
+                                defaults={'broker': broker, 'contact_email': contact_email}
+                            )
+                            created_records['companies'] += 1
+                        except Broker.DoesNotExist:
+                            errors.append(f'Company {name}: Broker {broker_name} not found')
+                    else:
+                        errors.append('Only admins can import companies')
+                        break
+
+        # Import Invoices
+        if 'Invoices' in workbook.sheetnames:
+            sheet = workbook['Invoices']
+            expected_headers = ['Provider Name', 'Broker Name', 'Company Name', 'Invoice Number',
+                                'Invoice Month (YYYY-MM)', 'Billed Amount', 'Paid Amount', 'Status']
+            if sheet.max_row < 2 or tuple(cell.value for cell in sheet[1][:8]) != tuple(expected_headers):
+                errors.append(
+                    'Invoices sheet: Missing or incorrect headers (expected: ' + ', '.join(expected_headers) + ')')
+            else:
+                for row in sheet.iter_rows(min_row=2, values_only=True):
+                    provider_name, broker_name, company_name, invoice_number, invoice_month, billed_amount, paid_amount, status = row[
+                                                                                                                                  :8]
+                    if not all(
+                            [provider_name, broker_name, company_name, invoice_number, invoice_month, billed_amount]):
+                        continue
+
+                    try:
+                        # Validate invoice month
+                        invoice_month = datetime.strptime(invoice_month, '%Y-%m').date()
+                        # Validate status
+                        if status not in dict(Invoice.STATUS_CHOICES):
+                            errors.append(f'Invoice {invoice_number}: Invalid status {status}')
+                            continue
+                        # Validate amounts
+                        billed_amount = float(billed_amount)
+                        paid_amount = float(paid_amount) if paid_amount else 0.0
+
+                        broker = Broker.objects.get(name=broker_name)
+                        company = Company.objects.get(name=company_name, broker=broker)
+
+                        if request.user.userprofile.role == 'ADMIN':
+                            provider = Provider.objects.get(name=provider_name)
+                        else:
+                            provider = Provider.objects.get(user=request.user)
+                            if provider_name != provider.name:
+                                errors.append(
+                                    f'Invoice {invoice_number}: Provider name {provider_name} does not match authenticated user')
+                                continue
+
+                        Invoice.objects.get_or_create(
+                            invoice_number=invoice_number,
+                            defaults={
+                                'provider': provider,
+                                'broker': broker,
+                                'company': company,
+                                'invoice_month': invoice_month,
+                                'billed_amount': billed_amount,
+                                'paid_amount': paid_amount,
+                                'status': status,
+                            }
+                        )
+                        created_records['invoices'] += 1
+                    except (Broker.DoesNotExist, Company.DoesNotExist, Provider.DoesNotExist, ValueError) as e:
+                        errors.append(f'Invoice {invoice_number}: {str(e)}')
+
+        if errors:
+            return Response({'errors': errors, 'created': created_records}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'message': 'Data imported successfully', 'created': created_records}, status=status.HTTP_200_OK)

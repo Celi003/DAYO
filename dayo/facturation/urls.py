@@ -18,7 +18,7 @@ router.register(r'invoices', InvoiceViewSet)
 
 urlpatterns = [
     path('', HelloView.as_view(), name='root'),               # ← Accueil = Bonjour !
-    path('api/', include(router.urls)),                       # ← API routes déplacées ici
+    path('/', include(router.urls)),                       # ← API routes déplacées ici
     path('login/', LoginView.as_view(), name='login'),
     path('register/', RegisterView.as_view(), name='register'),
     path('api-token-auth/', obtain_auth_token, name='api_token_auth'),

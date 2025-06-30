@@ -12,6 +12,8 @@ class UserProfile(models.Model):
     SUBSCRIPTION_DURATIONS = {
         '1_MONTH': timedelta(days=30),
         '3_MONTHS': timedelta(days=90),
+        '6_MONTHS': timedelta(days=120),
+        '9_MONTHS': timedelta(days=270),
         '1_YEAR': timedelta(days=365),
     }
     user = models.OneToOneField(User, on_delete=models.CASCADE)
