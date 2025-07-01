@@ -3,6 +3,7 @@ from django.db.models import Sum, Count
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 import openpyxl
@@ -21,23 +22,38 @@ class LoginView(APIView):
         password = request.data.get('password')
         user = authenticate(request, username=username, password=password)
         if user:
-            profile = UserProfile.objects.get(user=user)
-            if profile.role == 'PROVIDER' and (not profile.is_active or
-                                               (
-                                                       profile.subscription_expiry and profile.subscription_expiry < datetime.now(
-                                                   pytz.UTC))):
-                return Response({
-                    'error': 'Account is inactive. Please renew your subscription to activate your account.'
-                }, status=status.HTTP_403_FORBIDDEN)
-            login(request, user)
-            return Response({
-                'user_id': user.id,
-                'username': user.username,
-                'role': profile.role,
-                'is_active': profile.is_active,
-                'token': user.auth_token.key if hasattr(user, 'auth_token') else None
-            })
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+            if not user.is_active:
+                return Response({'error': 'User is not active'}, status=400)
+            # Create UserProfile if it doesn't exist
+            profile, created = UserProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    'role': 'PROVIDER' if not user.is_staff else 'ADMIN',
+                    'name': user.first_name or username,
+                    'email': user.email or f"{username}@example.com"
+                }
+            )
+            token, _ = Token.objects.get_or_create(user=user)
+            return Response({'token': token.key, 'role': profile.role})
+        return Response({'error': 'Invalid credentials'}, status=400)
+        # if user:
+        #     profile = UserProfile.objects.get(user=user)
+        #     if profile.role == 'PROVIDER' and (not profile.is_active or
+        #                                        (
+        #                                                profile.subscription_expiry and profile.subscription_expiry < datetime.now(
+        #                                            pytz.UTC))):
+        #         return Response({
+        #             'error': 'Account is inactive. Please renew your subscription to activate your account.'
+        #         }, status=status.HTTP_403_FORBIDDEN)
+        #     login(request, user)
+        #     return Response({
+        #         'user_id': user.id,
+        #         'username': user.username,
+        #         'role': profile.role,
+        #         'is_active': profile.is_active,
+        #         'token': user.auth_token.key if hasattr(user, 'auth_token') else None
+        #     })
+        # return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class RegisterView(APIView):
@@ -50,12 +66,13 @@ class RegisterView(APIView):
             return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
         user = User.objects.create_user(username=username, password=password)
-        profile = UserProfile.objects.create(user=user, role='PROVIDER', is_active=False, email=email)
-        Provider.objects.create(
+        #profile = UserProfile.objects.create(user=user, role='PROVIDER', is_active=False, email=email)
+        # Create UserProfile for the new user
+        UserProfile.objects.create(
             user=user,
+            role='PROVIDER',  # Default to PROVIDER; adjust if needed
             name=name,
-            subscription_status='INACTIVE',
-            subscription_expiry=datetime.now(pytz.UTC)
+            email=email
         )
         return Response({
             'user_id': user.id,
