@@ -12,6 +12,9 @@ class IsActiveProvider(BasePermission):
         if not request.user.is_authenticated:
             return False
         profile = request.user.userprofile
+        # Les admins ne sont jamais bloqués par is_active ou l'abonnement
+        if profile.role == 'ADMIN':
+            return True
         if profile.role != 'PROVIDER':
             return False
         if not profile.is_active:
@@ -21,3 +24,18 @@ class IsActiveProvider(BasePermission):
             profile.save()
             return False
         return True
+
+class IsAdminOrActiveProvider(BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        profile = getattr(user, 'userprofile', None)
+        print(f"DEBUG PERM: user={getattr(user, 'username', None)}, is_authenticated={getattr(user, 'is_authenticated', None)}, role={getattr(profile, 'role', None)}, is_active={getattr(profile, 'is_active', None)}")
+        if not user.is_authenticated:
+            return False
+        if not profile:
+            return False
+        if profile.role == 'ADMIN':
+            return True
+        if profile.role == 'PROVIDER' and profile.is_active:
+            return True
+        return False

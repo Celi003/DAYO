@@ -65,3 +65,17 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
     def get_rejected_amount(self, obj):
         return obj.rejected_amount()
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    user = serializers.CharField(source='user.username', read_only=True)
+    class Meta:
+        model = AuditLog
+        fields = ['id', 'date', 'user', 'action', 'entity', 'details']
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    class Meta:
+        model = Notification
+        fields = ['id', 'username', 'notif_type', 'message', 'is_read', 'created_at', 'invoice', 'payment']

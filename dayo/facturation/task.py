@@ -40,7 +40,12 @@ def check_subscription_expiry():
                     message=f'Dear {profile.user.username},\n\nYour subscription has expired on {profile.subscription_expiry}. Please renew your subscription to continue using the system.\n\nBest regards,\nSystem Admin',
                     recipient_list=[profile.email]
                 )
-
+            # Notification interne provider
+            Notification.objects.create(
+                user=profile.user,
+                notif_type='WARNING',
+                message=f"Votre abonnement a expiré le {profile.subscription_expiry.strftime('%d/%m/%Y')}. Veuillez le renouveler pour continuer à utiliser la plateforme."
+            )
             # Notify admins
             if admin_emails:
                 send_notification_email.delay(
@@ -48,3 +53,10 @@ def check_subscription_expiry():
                     message=f'The subscription for provider {profile.user.username} has expired on {profile.subscription_expiry}. Please review and reactivate if necessary.',
                     recipient_list=list(admin_emails)
                 )
+                # Notification interne admins
+                for admin_user in User.objects.filter(userprofile__role='ADMIN'):
+                    Notification.objects.create(
+                        user=admin_user,
+                        notif_type='WARNING',
+                        message=f"L'abonnement du prestataire {profile.user.username} a expiré le {profile.subscription_expiry.strftime('%d/%m/%Y')}."
+                    )

@@ -15,10 +15,12 @@ router.register(r'providers', ProviderViewSet)
 router.register(r'brokers', BrokerViewSet)
 router.register(r'companies', CompanyViewSet)
 router.register(r'invoices', InvoiceViewSet)
+router.register(r'auditlog', AuditLogViewSet)
+router.register(r'notifications', NotificationViewSet)
 
 urlpatterns = [
     path('', HelloView.as_view(), name='root'),               # ← Accueil = Bonjour !
-    path('/', include(router.urls)),                       # ← API routes déplacées ici
+    path('', include(router.urls)),                       # ← API routes à la racine
     path('login/', LoginView.as_view(), name='login'),
     path('register/', RegisterView.as_view(), name='register'),
     path('api-token-auth/', obtain_auth_token, name='api_token_auth'),

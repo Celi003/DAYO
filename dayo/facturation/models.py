@@ -17,6 +17,7 @@ class UserProfile(models.Model):
         '1_YEAR': timedelta(days=365),
     }
     user = models.OneToOneField(User, on_delete=models.CASCADE)
+    username = models.CharField(max_length=255)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='PROVIDER')
     is_active = models.BooleanField(default=False)
     subscription_status = models.CharField(max_length=50, blank=True, null=True)
@@ -92,3 +93,33 @@ class Rejection(models.Model):
 
     def __str__(self):
         return f"Rejection for {self.invoice.invoice_number}"
+
+class AuditLog(models.Model):
+    date = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    action = models.CharField(max_length=100)
+    entity = models.CharField(max_length=100)
+    details = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"{self.date} - {self.user} - {self.action} - {self.entity}"
+
+class Notification(models.Model):
+    NOTIF_TYPE_CHOICES = (
+        ('REMINDER', 'Relance'),
+        ('PAYMENT_ALERT', 'Alerte de paiement'),
+        ('INFO', 'Information'),
+        ('WARNING', 'Avertissement'),
+        ('CUSTOM', 'Personnalisée'),
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    notif_type = models.CharField(max_length=30, choices=NOTIF_TYPE_CHOICES, default='INFO')
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    # Optionally link to an invoice, payment, etc.
+    invoice = models.ForeignKey('Invoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='notifications')
+    payment = models.ForeignKey('Payment', on_delete=models.SET_NULL, null=True, blank=True, related_name='notifications')
+
+    def __str__(self):
+        return f"{self.user.username} - {self.notif_type} - {self.message[:30]}..."

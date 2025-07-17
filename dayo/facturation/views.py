@@ -14,6 +14,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 from .serializers import *
 from .permissions import *
 from .task import *
+from .models import AuditLog, Notification
 
 
 class LoginView(APIView):
@@ -29,12 +30,19 @@ class LoginView(APIView):
                 user=user,
                 defaults={
                     'role': 'PROVIDER' if not user.is_staff else 'ADMIN',
-                    'name': user.first_name or username,
+                    'username': user.username,
                     'email': user.email or f"{username}@example.com"
                 }
             )
             token, _ = Token.objects.get_or_create(user=user)
-            return Response({'token': token.key, 'role': profile.role})
+            return Response({
+                'token': token.key,
+                'role': profile.role,
+                'isActive': profile.is_active,
+                'subscriptionEndDate': profile.subscription_expiry.isoformat() if profile.subscription_expiry else None,
+                'username': user.username,
+                'id': str(profile.id)
+            })
         return Response({'error': 'Invalid credentials'}, status=400)
         # if user:
         #     profile = UserProfile.objects.get(user=user)
@@ -65,13 +73,10 @@ class RegisterView(APIView):
         if User.objects.filter(username=username).exists():
             return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.create_user(username=username, password=password)
-        #profile = UserProfile.objects.create(user=user, role='PROVIDER', is_active=False, email=email)
-        # Create UserProfile for the new user
+        user = User.objects.create_user(username=username, password=password, email=email)
         UserProfile.objects.create(
             user=user,
             role='PROVIDER',  # Default to PROVIDER; adjust if needed
-            name=name,
             email=email
         )
         return Response({
@@ -100,6 +105,33 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='CREATE',
+            entity='UserProfile',
+            details=f'Created user profile {instance.user.username} (id={instance.id})'
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='UPDATE',
+            entity='UserProfile',
+            details=f'Updated user profile {instance.user.username} (id={instance.id})'
+        )
+
+    def perform_destroy(self, instance):
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='DELETE',
+            entity='UserProfile',
+            details=f'Deleted user profile {instance.user.username} (id={instance.id})'
+        )
+        instance.delete()
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def activate_account(self, request, pk=None):
@@ -144,7 +176,34 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 class ProviderViewSet(viewsets.ModelViewSet):
     queryset = Provider.objects.all()
     serializer_class = ProviderSerializer
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAdminOrActiveProvider]
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='CREATE',
+            entity='Provider',
+            details=f'Created provider {instance.name} (id={instance.id})'
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='UPDATE',
+            entity='Provider',
+            details=f'Updated provider {instance.name} (id={instance.id})'
+        )
+
+    def perform_destroy(self, instance):
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='DELETE',
+            entity='Provider',
+            details=f'Deleted provider {instance.name} (id={instance.id})'
+        )
+        instance.delete()
 
 
 class BrokerViewSet(viewsets.ModelViewSet):
@@ -152,17 +211,71 @@ class BrokerViewSet(viewsets.ModelViewSet):
     serializer_class = BrokerSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='CREATE',
+            entity='Broker',
+            details=f'Created broker {instance.name} (id={instance.id})'
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='UPDATE',
+            entity='Broker',
+            details=f'Updated broker {instance.name} (id={instance.id})'
+        )
+
+    def perform_destroy(self, instance):
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='DELETE',
+            entity='Broker',
+            details=f'Deleted broker {instance.name} (id={instance.id})'
+        )
+        instance.delete()
+
 
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all()
     serializer_class = CompanySerializer
     permission_classes = [IsAuthenticated, IsAdmin]
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='CREATE',
+            entity='Company',
+            details=f'Created company {instance.name} (id={instance.id})'
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='UPDATE',
+            entity='Company',
+            details=f'Updated company {instance.name} (id={instance.id})'
+        )
+
+    def perform_destroy(self, instance):
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='DELETE',
+            entity='Company',
+            details=f'Deleted company {instance.name} (id={instance.id})'
+        )
+        instance.delete()
+
 
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
-    permission_classes = [IsAuthenticated, IsActiveProvider | IsAdmin]
+    permission_classes = [IsAdminOrActiveProvider]
 
     def get_queryset(self):
         user = self.request.user
@@ -174,19 +287,51 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.userprofile.role == 'PROVIDER':
             provider = Provider.objects.get(user=user)
-            serializer.save(provider=provider)
+            instance = serializer.save(provider=provider)
         else:
-            serializer.save()
+            instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='CREATE',
+            entity='Invoice',
+            details=f'Created invoice {instance.invoice_number} (id={instance.id})'
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='UPDATE',
+            entity='Invoice',
+            details=f'Updated invoice {instance.invoice_number} (id={instance.id})'
+        )
+
+    def perform_destroy(self, instance):
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='DELETE',
+            entity='Invoice',
+            details=f'Deleted invoice {instance.invoice_number} (id={instance.id})'
+        )
+        instance.delete()
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsActiveProvider | IsAdmin])
     def add_payment(self, request, pk=None):
         invoice = self.get_object()
         serializer = PaymentSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(invoice=invoice)
+            payment = serializer.save(invoice=invoice)
             invoice.paid_amount += serializer.validated_data['amount']
             invoice.status = 'PAID' if invoice.remaining_amount() <= 0 else 'PARTIAL'
             invoice.save()
+            # Notification interne au provider
+            Notification.objects.create(
+                user=invoice.provider.user,
+                notif_type='PAYMENT_ALERT',
+                message=f"Un paiement de {payment.amount} FCFA a été enregistré pour la facture {invoice.invoice_number}.",
+                invoice=invoice,
+                payment=payment
+            )
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -195,9 +340,16 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         invoice = self.get_object()
         serializer = RejectionSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(invoice=invoice)
+            rejection = serializer.save(invoice=invoice)
             invoice.status = 'REJECTED' if invoice.remaining_amount() <= 0 else 'PARTIAL'
             invoice.save()
+            # Notification interne au provider
+            Notification.objects.create(
+                user=invoice.provider.user,
+                notif_type='WARNING',
+                message=f"Un rejet de {rejection.rejected_amount} FCFA a été enregistré pour la facture {invoice.invoice_number}. Motif : {rejection.rejection_reason}",
+                invoice=invoice
+            )
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -303,7 +455,13 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             message=letter,
             recipient_list=[invoice.company.contact_email]
         )
-
+        # Notification interne au provider
+        Notification.objects.create(
+            user=invoice.provider.user,
+            notif_type='REMINDER',
+            message=f"Une relance de paiement a été envoyée pour la facture {invoice.invoice_number} ({remaining} FCFA restants).",
+            invoice=invoice
+        )
         return Response({'message': 'Reclamation letter sent successfully', 'letter': letter})
 
 
@@ -533,3 +691,54 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         if errors:
             return Response({'errors': errors, 'created': created_records}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'message': 'Data imported successfully', 'created': created_records}, status=status.HTTP_200_OK)
+
+
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = AuditLog.objects.all().order_by('-date')
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.query_params.get('user')
+        action = self.request.query_params.get('action')
+        entity = self.request.query_params.get('entity')
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        if user:
+            qs = qs.filter(user__username=user)
+        if action:
+            qs = qs.filter(action__icontains=action)
+        if entity:
+            qs = qs.filter(entity__icontains=entity)
+        if date_from:
+            qs = qs.filter(date__gte=date_from)
+        if date_to:
+            qs = qs.filter(date__lte=date_to)
+        return qs
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    queryset = Notification.objects.all().order_by('-created_at')
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.userprofile.role == 'ADMIN':
+            return Notification.objects.all().order_by('-created_at')
+        return Notification.objects.filter(user=user).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    def update(self, request, *args, **kwargs):
+        # Only allow marking as read/unread
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        if instance.user != request.user and request.user.userprofile.role != 'ADMIN':
+            return Response({'error': 'Not allowed'}, status=status.HTTP_403_FORBIDDEN)
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
