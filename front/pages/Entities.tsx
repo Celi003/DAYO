@@ -1,47 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { getProviders, createProvider, updateProvider, deleteProvider, getBrokers, createBroker, updateBroker, deleteBroker, getCompanies, createCompany, updateCompany, deleteCompany } from '../services/api';
+import { getBrokers, getCompanies, createBroker, updateBroker, deleteBroker, createCompany, updateCompany, deleteCompany } from '../services/api';
 import { useNotification } from '../components/NotificationContext';
 import { useApi } from '../services/api';
-
-interface ConfirmModalProps {
-  open: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-  message: string;
-}
-const ConfirmModal: React.FC<ConfirmModalProps> = ({open, onConfirm, onCancel, message}) => {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded shadow-lg">
-        <div className="mb-4">{message}</div>
-        <div className="flex gap-4 justify-end">
-          <button onClick={onCancel} className="px-4 py-2 bg-slate-200 rounded">Annuler</button>
-          <button onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded">Confirmer</button>
-        </div>
-      </div>
-    </div>
-  );
-};
+import ConfirmModal from '../components/Modal';
 
 const Entities: React.FC = () => {
-  const [tab, setTab] = useState<'providers' | 'brokers' | 'companies'>('providers');
-  const [providers, setProviders] = useState<any[]>([]);
+  const [tab, setTab] = useState<'brokers' | 'companies'>('brokers');
   const [brokers, setBrokers] = useState<any[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [confirm, setConfirm] = useState<{open:boolean, onConfirm:()=>void, message:string}>({open:false,onConfirm:()=>{},message:''});
   const { notify } = useNotification();
   const { call } = useApi();
-
-  // Providers
-  useEffect(() => { if (tab === 'providers') fetchProviders(); }, [tab]);
-  const fetchProviders = async () => { setLoading(true); const data = await call(() => getProviders()); if (data) setProviders(data); setLoading(false); };
-  const handleAddProvider = async (data: any) => { await call(() => createProvider(data), 'Prestataire ajouté'); fetchProviders(); };
-  const handleUpdateProvider = async (id: string, data: any) => { await call(() => updateProvider(id, data), 'Prestataire modifié'); fetchProviders(); };
-  const handleDeleteProvider = (id: string) => {
-    setConfirm({open:true, onConfirm: async()=>{await call(() => deleteProvider(id), 'Prestataire supprimé'); fetchProviders(); setConfirm({...confirm,open:false});}, message:'Confirmer la suppression de ce prestataire ?'});
-  };
 
   // Brokers
   useEffect(() => { if (tab === 'brokers') fetchBrokers(); }, [tab]);
@@ -58,27 +28,33 @@ const Entities: React.FC = () => {
   const handleAddCompany = async (data: any) => { await call(() => createCompany(data), 'Compagnie ajoutée'); fetchCompanies(); };
   const handleUpdateCompany = async (id: string, data: any) => { await call(() => updateCompany(id, data), 'Compagnie modifiée'); fetchCompanies(); };
   const handleDeleteCompany = (id: string) => {
-    setConfirm({open:true, onConfirm: async()=>{await call(() => deleteCompany(id), 'Compagnie supprimée'); fetchCompanies(); setConfirm({...confirm,open:false});}, message:'Confirmer la suppression de cette compagnie ?'});
+    setConfirm({open:true, onConfirm: async()=>{await call(() => deleteCompany(id), 'Compagnie supprimée'); fetchCompanies(); setConfirm({open:false,onConfirm:()=>{},message:''});}, message:'Confirmer la suppression de cette compagnie ?'});
   };
 
   return (
     <div className="p-8">
-      <ConfirmModal open={confirm.open} onConfirm={confirm.onConfirm} onCancel={()=>setConfirm({...confirm,open:false})} message={confirm.message} />
+      <ConfirmModal title="Confirmation" isOpen={confirm.open} onClose={()=>setConfirm({...confirm,open:false})}>
+        <div>
+          <p className="mb-4">{confirm.message}</p>
+          <div className="flex justify-end gap-4">
+            <button onClick={()=>setConfirm({...confirm,open:false})} className="px-4 py-2 bg-slate-200 rounded">Annuler</button>
+            <button onClick={()=>{confirm.onConfirm();}} className="px-4 py-2 bg-red-600 text-white rounded">Confirmer</button>
+          </div>
+        </div>
+      </ConfirmModal>
       <h1 className="text-3xl font-bold mb-6">Gestion des entités</h1>
-      <div className="flex gap-4 mb-6">
-        <button className={tab==='providers'?"bg-blue-600 text-white":"bg-slate-200"} onClick={()=>setTab('providers')}>Prestataires</button>
-        <button className={tab==='brokers'?"bg-blue-600 text-white":"bg-slate-200"} onClick={()=>setTab('brokers')}>Courtiers</button>
-        <button className={tab==='companies'?"bg-blue-600 text-white":"bg-slate-200"} onClick={()=>setTab('companies')}>Compagnies</button>
+      <div className="flex border-b">
+        <button className={`py-2 px-4 text-sm font-medium ${tab==='brokers' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`} onClick={()=>setTab('brokers')}>Courtiers</button>
+        <button className={`py-2 px-4 text-sm font-medium ${tab==='companies' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`} onClick={()=>setTab('companies')}>Compagnies</button>
       </div>
-      {loading && <div>Chargement...</div>}
-      {!loading && tab==='providers' && <EntityTable data={providers} onAdd={handleAddProvider} onUpdate={handleUpdateProvider} onDelete={handleDeleteProvider} type="Prestataire" />}
+      {loading && <div className="flex items-center justify-center h-48"><div className="w-8 h-8 border-4 border-dashed rounded-full animate-spin border-slate-500"></div></div>}
       {!loading && tab==='brokers' && <EntityTable data={brokers} onAdd={handleAddBroker} onUpdate={handleUpdateBroker} onDelete={handleDeleteBroker} type="Courtier" />}
-      {!loading && tab==='companies' && <EntityTable data={companies} onAdd={handleAddCompany} onUpdate={handleUpdateCompany} onDelete={handleDeleteCompany} type="Compagnie" />}
+      {!loading && tab==='companies' && <EntityTable data={companies} brokers={brokers} onAdd={handleAddCompany} onUpdate={handleUpdateCompany} onDelete={handleDeleteCompany} type="Compagnie" />}
     </div>
   );
 };
 
-const EntityTable: React.FC<{data: any[], onAdd: (data:any)=>void, onUpdate: (id:string,data:any)=>void, onDelete:(id:string)=>void, type:string}> = ({data, onAdd, onUpdate, onDelete, type}) => {
+const EntityTable: React.FC<{data: any[], brokers?: any[], onAdd: (data:any)=>void, onUpdate: (id:string,data:any)=>void, onDelete:(id:string)=>void, type:string}> = ({data, brokers, onAdd, onUpdate, onDelete, type}) => {
   const [editId, setEditId] = useState<string|null>(null);
   const [form, setForm] = useState<any>({});
   const [errors, setErrors] = useState<Record<string,string>>({});
@@ -88,19 +64,25 @@ const EntityTable: React.FC<{data: any[], onAdd: (data:any)=>void, onUpdate: (id
   const pageSize = 10;
   const { notify } = useNotification();
 
+  const getFields = () => {
+    switch (type) {
+        case 'Courtier': return { name: 'text' };
+        case 'Compagnie': return { name: 'text', contact_email: 'email', broker: 'select_broker' };
+        default: return {};
+    }
+  };
+  const fields = getFields();
+  const fieldNames = Object.keys(fields);
+
   const validate = () => {
     const errs: Record<string,string> = {};
-    if (data[0]) {
-      Object.keys(data[0]).forEach(k => {
-        if (k !== 'id') {
-          if (!form[k] || form[k].toString().trim() === '') {
-            errs[k] = 'Ce champ est requis';
-          }
-          if (k.toLowerCase().includes('email') && form[k] && !/^\S+@\S+\.\S+$/.test(form[k])) {
-            errs[k] = 'Format email invalide';
-          }
+    for (const k of fieldNames) {
+        if (!form[k] || form[k].toString().trim() === '') {
+          errs[k] = 'Ce champ est requis';
         }
-      });
+        if (k.toLowerCase().includes('email') && form[k] && !/^\S+@\S+\.\S+$/.test(form[k])) {
+          errs[k] = 'Format email invalide';
+        }
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -109,7 +91,12 @@ const EntityTable: React.FC<{data: any[], onAdd: (data:any)=>void, onUpdate: (id
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    if (editId) onUpdate(editId, form); else onAdd(form);
+    let dataToSend = { ...form };
+    if (type === 'Compagnie') {
+      dataToSend = { ...form, broker_id: form.broker };
+      delete dataToSend.broker;
+    }
+    if (editId) onUpdate(editId, dataToSend); else onAdd(dataToSend);
     setEditId(null); setForm({}); setErrors({});
   };
 
@@ -128,50 +115,91 @@ const EntityTable: React.FC<{data: any[], onAdd: (data:any)=>void, onUpdate: (id
   const totalPages = Math.ceil(sorted.length/pageSize)||1;
   const paged = sorted.slice((page-1)*pageSize, page*pageSize);
 
-  const handleSort = (col:string) => {
-    setSort(s => s.col===col ? {col,asc:!s.asc} : {col,asc:true});
+  const handleStartEdit = (item: any) => {
+    setEditId(item.id);
+    const formData: any = {};
+    // For company, broker is an object in data, but form needs broker id
+    if (type === 'Compagnie' && item.broker && typeof item.broker === 'object') {
+        formData.broker = item.broker.id;
+    }
+    setForm({...item, ...formData});
   };
 
   return (
     <div>
-      <div className="flex gap-2 mb-2 items-center">
+      <h3 className="text-xl font-bold mt-4 mb-2">Ajouter/Modifier un(e) {type}</h3>
+      <form onSubmit={handleSubmit} className="flex gap-4 mb-4 flex-wrap items-end p-4 bg-slate-50 rounded-md">
+        {fieldNames.map(k => (
+          <div key={k} className="flex flex-col">
+            <label className="text-sm font-medium text-slate-600 mb-1 capitalize">{k.replace('_', ' ')}</label>
+            { (fields as any)[k] === 'select_broker' ? (
+                <select
+                  value={form[k] || ''}
+                  onChange={e => setForm({...form, [k]: e.target.value})}
+                  className={`p-2 border rounded-md ${errors[k] ? 'border-red-500' : 'border-slate-300'}`}
+                >
+                  <option value="">Choisir...</option>
+                  {brokers?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+            ) : (
+                <input
+                  placeholder={k.replace('_', ' ')}
+                  value={form[k]||''}
+                  onChange={e=>setForm({...form,[k]:e.target.value})}
+                  className={`p-2 border rounded-md ${errors[k]?'border-red-500':'border-slate-300'}`}
+                  type={(fields as any)[k]}
+                />
+            )}
+            {errors[k] && <span className="text-red-600 text-xs mt-1">{errors[k]}</span>}
+          </div>
+        ))}
+        <div className="flex gap-2">
+            <button type="submit" className="bg-blue-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-700">{editId?'Enregistrer':'Ajouter'}</button>
+            {editId && <button type="button" onClick={()=>{setEditId(null);setForm({});setErrors({});}} className="bg-slate-200 py-2 px-4 rounded-md hover:bg-slate-300">Annuler</button>}
+        </div>
+      </form>
+
+      <h3 className="text-xl font-bold mt-8 mb-2">Liste des {type}s</h3>
+       <div className="flex flex-wrap gap-2 mb-2 items-center bg-slate-50 p-2 rounded">
         <input placeholder="Recherche..." value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} className="border p-1" />
         <span className="text-sm text-slate-500">{sorted.length} résultat(s)</span>
       </div>
-      <table className="min-w-full mb-4">
-        <thead><tr>{data[0] && Object.keys(data[0]).map(k=>(
-          <th key={k} className="cursor-pointer select-none" onClick={()=>handleSort(k)}>
-            {k} {sort.col===k?(sort.asc?'▲':'▼'):''}
-          </th>
-        ))}<th>Actions</th></tr></thead>
-        <tbody>
-          {paged.map((item:any)=>(
-            <tr key={item.id}>
-              {Object.keys(item).map(k=>(<td key={k}>{String(item[k])}</td>))}
-              <td>
-                <button onClick={()=>{setEditId(item.id);setForm(item);}}>Éditer</button>
-                <button onClick={()=>onDelete(item.id)}>Supprimer</button>
-              </td>
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-white rounded-lg shadow-sm">
+          <thead className="bg-slate-100">
+            <tr>
+              {Object.keys(data[0] || {}).filter(k => k !== 'id' && typeof (data[0] || {})[k] !== 'object').map(k => (
+                <th key={k} className="p-3 text-left text-sm font-semibold text-slate-600">
+                  {k} {sort.col===k?(sort.asc?'▲':'▼'):''}
+                </th>
+              ))}
+              {type === 'Compagnie' && <th className="p-3 text-left text-sm font-semibold text-slate-600">Courtier</th>}
+              <th className="p-3 text-left text-sm font-semibold text-slate-600">Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="flex gap-2 items-center mb-2">
-        <button disabled={page<=1} onClick={()=>setPage(p=>p-1)} className="px-2 py-1 border rounded disabled:opacity-50">Préc.</button>
-        <span>Page {page} / {totalPages}</span>
-        <button disabled={page>=totalPages} onClick={()=>setPage(p=>p+1)} className="px-2 py-1 border rounded disabled:opacity-50">Suiv.</button>
+          </thead>
+          <tbody>
+            {paged.map(item => (
+              <tr key={item.id} className="border-b hover:bg-slate-50">
+                {Object.keys(item).filter(k => k !== 'id' && typeof item[k] !== 'object').map(k => (
+                  <td key={k} className="p-3">{item[k]}</td>
+                ))}
+                {type === 'Compagnie' && (
+                    <td className="p-3">{item.broker?.name || '-'}</td>
+                )}
+                <td className="p-3 flex gap-2 justify-center">
+                  <button onClick={() => handleStartEdit(item)} className="text-xs bg-blue-100 text-blue-800 font-semibold py-1 px-3 rounded-full hover:bg-blue-200">Éditer</button>
+                  <button onClick={() => onDelete(item.id)} className="text-xs bg-red-100 text-red-800 font-semibold py-1 px-3 rounded-full hover:bg-red-200">Supprimer</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      <div className="mb-2 font-bold">{editId?'Éditer':'Ajouter'} {type}</div>
-      <form onSubmit={handleSubmit} className="flex gap-2 mb-4 flex-wrap">
-        {data[0] && Object.keys(data[0]).filter(k=>k!=='id').map(k=>(
-          <div key={k} className="flex flex-col">
-            <input placeholder={k} value={form[k]||''} onChange={e=>setForm({...form,[k]:e.target.value})} className={errors[k]?'border-red-500 border':''} />
-            {errors[k] && <span className="text-red-600 text-xs">{errors[k]}</span>}
-          </div>
-        ))}
-        <button type="submit">{editId?'Enregistrer':'Ajouter'}</button>
-        {editId && <button type="button" onClick={()=>{setEditId(null);setForm({});setErrors({});}}>Annuler</button>}
-      </form>
+      <div className="flex justify-center gap-2 items-center my-4">
+        <button disabled={page<=1} onClick={()=>setPage(p=>p-1)} className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-slate-100">Préc.</button>
+        <span>Page {page} sur {totalPages}</span>
+        <button disabled={page>=totalPages} onClick={()=>setPage(p=>p+1)} className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-slate-100">Suiv.</button>
+      </div>
     </div>
   );
 };

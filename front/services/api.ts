@@ -1,5 +1,5 @@
 
-import { Partner, Invoice, Payment, Rejection, User } from '../types';
+import { Invoice, Payment, Rejection, User } from '../types';
 
 const API_BASE = 'http://localhost:8000'; // À adapter selon le déploiement
 
@@ -76,7 +76,8 @@ export const getCurrentUser = async () => {
   if (!users[0]) return null;
   return {
     ...users[0],
-    role: users[0].role ? users[0].role.toLowerCase() : undefined
+    role: users[0].role ? users[0].role.toLowerCase() : undefined,
+    isActive: users[0].is_active // mapping
   };
 };
 
@@ -95,7 +96,8 @@ export const getUsers = async () => {
   const users = await res.json();
   return users.map((u: any) => ({
     ...u,
-    role: u.role ? u.role.toLowerCase() : undefined
+    role: u.role ? u.role.toLowerCase() : undefined,
+    isActive: u.is_active // mapping
   }));
 };
 
@@ -148,7 +150,26 @@ export const getInvoices = async () => {
     }
   }
   if (!isJsonResponse(res)) throw new Error('Réponse inattendue du serveur (factures)');
-  return await res.json();
+  const data = await res.json();
+  return data.map((inv: any) => ({
+    ...inv,
+    depositDate: inv.deposit_date,
+    totalAmount: Number(inv.billed_amount),
+    providerId: inv.provider?.id || inv.provider,
+    companyId: inv.company?.id || inv.company,
+    brokerId: inv.broker ? (inv.broker.id || inv.broker) : null,
+    payments: (inv.payments || []).map((p: any) => ({
+      ...p,
+      date: p.payment_date,
+      amount: Number(p.amount)
+    })),
+    rejections: (inv.rejections || []).map((r: any) => ({
+      ...r,
+      amount: Number(r.rejected_amount),
+      reason: r.rejection_reason,
+      date: r.rejection_date
+    }))
+  }));
 };
 
 export const addInvoice = async (invoiceData: any) => {
@@ -158,7 +179,26 @@ export const addInvoice = async (invoiceData: any) => {
     body: JSON.stringify(invoiceData)
   });
   if (!res.ok) throw new Error('Erreur lors de la création de la facture');
-  return await res.json();
+  const inv = await res.json();
+  return {
+    ...inv,
+    depositDate: inv.deposit_date,
+    totalAmount: inv.billed_amount,
+    providerId: inv.provider,
+    companyId: inv.company,
+    brokerId: inv.broker,
+    payments: (inv.payments || []).map((p: any) => ({
+      ...p,
+      date: p.payment_date,
+      amount: p.amount
+    })),
+    rejections: (inv.rejections || []).map((r: any) => ({
+      ...r,
+      amount: r.rejected_amount,
+      reason: r.rejection_reason,
+      date: r.rejection_date
+    }))
+  };
 };
 
 // PAYMENTS
@@ -169,7 +209,30 @@ export const addPayment = async (invoiceId: string, paymentData: any) => {
     body: JSON.stringify(paymentData)
   });
   if (!res.ok) throw new Error('Erreur lors de l\'ajout du paiement');
-  return await res.json();
+  const inv = await res.json();
+  // Si le backend retourne un Invoice complet, on mappe comme dans getInvoices, sinon on retourne l'objet brut
+  if (inv && inv.id && (inv.payments || inv.rejections)) {
+    return {
+      ...inv,
+      depositDate: inv.deposit_date,
+      totalAmount: Number(inv.billed_amount),
+      providerId: inv.provider?.id || inv.provider,
+      companyId: inv.company?.id || inv.company,
+      brokerId: inv.broker ? (inv.broker.id || inv.broker) : null,
+      payments: (inv.payments || []).map((p: any) => ({
+        ...p,
+        date: p.payment_date,
+        amount: Number(p.amount)
+      })),
+      rejections: (inv.rejections || []).map((r: any) => ({
+        ...r,
+        amount: Number(r.rejected_amount),
+        reason: r.rejection_reason,
+        date: r.rejection_date
+      }))
+    };
+  }
+  return inv;
 };
 
 // REJECTIONS
@@ -180,7 +243,29 @@ export const addRejection = async (invoiceId: string, rejectionData: any) => {
     body: JSON.stringify(rejectionData)
   });
   if (!res.ok) throw new Error('Erreur lors de l\'ajout du rejet');
-  return await res.json();
+  const inv = await res.json();
+  if (inv && inv.id && (inv.payments || inv.rejections)) {
+    return {
+      ...inv,
+      depositDate: inv.deposit_date,
+      totalAmount: Number(inv.billed_amount),
+      providerId: inv.provider?.id || inv.provider,
+      companyId: inv.company?.id || inv.company,
+      brokerId: inv.broker ? (inv.broker.id || inv.broker) : null,
+      payments: (inv.payments || []).map((p: any) => ({
+        ...p,
+        date: p.payment_date,
+        amount: Number(p.amount)
+      })),
+      rejections: (inv.rejections || []).map((r: any) => ({
+        ...r,
+        amount: Number(r.rejected_amount),
+        reason: r.rejection_reason,
+        date: r.rejection_date
+      }))
+    };
+  }
+  return inv;
 };
 
 // STATISTICS
@@ -237,16 +322,28 @@ export const generateReclamationLetter = async (invoiceId: string) => {
 // CRUD PROVIDERS
 export const createProvider = async (data: any) => {
   const res = await fetch(`${API_BASE}/providers/`, {
-    method: 'POST', headers: getHeaders(), body: JSON.stringify(data)
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Erreur lors de la création du prestataire');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la création du prestataire';
+    throw new Error(errorMessage);
+  }
   return await res.json();
 };
 export const updateProvider = async (id: string, data: any) => {
   const res = await fetch(`${API_BASE}/providers/${id}/`, {
-    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data)
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Erreur lors de la modification du prestataire');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la mise à jour du prestataire';
+    throw new Error(errorMessage);
+  }
   return await res.json();
 };
 export const deleteProvider = async (id: string) => {
@@ -257,16 +354,28 @@ export const deleteProvider = async (id: string) => {
 // CRUD BROKERS
 export const createBroker = async (data: any) => {
   const res = await fetch(`${API_BASE}/brokers/`, {
-    method: 'POST', headers: getHeaders(), body: JSON.stringify(data)
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Erreur lors de la création du courtier');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la création du courtier';
+    throw new Error(errorMessage);
+  }
   return await res.json();
 };
 export const updateBroker = async (id: string, data: any) => {
   const res = await fetch(`${API_BASE}/brokers/${id}/`, {
-    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data)
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Erreur lors de la modification du courtier');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la mise à jour du courtier';
+    throw new Error(errorMessage);
+  }
   return await res.json();
 };
 export const deleteBroker = async (id: string) => {
@@ -277,16 +386,28 @@ export const deleteBroker = async (id: string) => {
 // CRUD COMPANIES
 export const createCompany = async (data: any) => {
   const res = await fetch(`${API_BASE}/companies/`, {
-    method: 'POST', headers: getHeaders(), body: JSON.stringify(data)
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Erreur lors de la création de la compagnie');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la création de la compagnie';
+    throw new Error(errorMessage);
+  }
   return await res.json();
 };
 export const updateCompany = async (id: string, data: any) => {
   const res = await fetch(`${API_BASE}/companies/${id}/`, {
-    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data)
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Erreur lors de la modification de la compagnie');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la mise à jour de la compagnie';
+    throw new Error(errorMessage);
+  }
   return await res.json();
 };
 export const deleteCompany = async (id: string) => {
@@ -351,6 +472,23 @@ export async function patchNotification(id: number, is_read: boolean) {
   if (!res.ok) throw new Error('Erreur lors de la mise à jour');
   return res.json();
 }
+
+export const activateProviderAccount = async (userId: string, duration: string) => {
+  const res = await fetch(`${API_BASE}/users/${userId}/activate_account/`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ duration })
+  });
+  if (!res.ok) {
+    let errorMsg = 'Erreur lors de l’activation du compte';
+    if (res.headers.get('content-type')?.includes('application/json')) {
+      const data = await res.json();
+      errorMsg = data.error || errorMsg;
+    }
+    throw new Error(errorMsg);
+  }
+  return await res.json();
+};
 
 const isJsonResponse = (res: Response) => {
   const contentType = res.headers.get('content-type');

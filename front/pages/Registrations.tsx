@@ -1,8 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { addInvoice, getInvoices, getProviders, getUsers, exportInvoices, importInvoices, downloadImportTemplate } from '../services/api';
-import { Invoice, Partner, User } from '../types';
-import { GoogleGenAI } from "@google/genai";
+import { addInvoice, getInvoices, getCompanies, getBrokers, getProviders, getUsers, exportInvoices, importInvoices, downloadImportTemplate, generateReclamationLetter } from '../services/api';
+import { Invoice, Company, Broker, User } from '../types';
 import InvoiceDetailModal from '../components/InvoiceDetailModal';
 import * as api from '../services/api';
 import { useNotification } from '../components/NotificationContext';
@@ -14,8 +13,8 @@ const formatDate = (dateString: string) => {
 };
 
 const getInvoiceStatus = (invoice: Invoice): { text: string; color: string } => {
-    const totalPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
-    const totalRejected = invoice.rejections.reduce((sum, r) => sum + r.amount, 0);
+    const totalPaid = (invoice.payments || []).reduce((sum, p) => sum + p.amount, 0);
+    const totalRejected = (invoice.rejections || []).reduce((sum, r) => sum + r.amount, 0);
     const outstanding = invoice.totalAmount - totalPaid - totalRejected;
 
     if (outstanding <= 0 && invoice.totalAmount > 0) {
@@ -43,8 +42,9 @@ const InvoiceStatusBadge: React.FC<{ status: { text: string; color: string } }> 
 };
 
 
-const AddInvoiceForm: React.FC<{ partners: Partner[], onAddInvoice: (invoice: Invoice) => void, user: User }> = ({ partners, onAddInvoice, user }) => {
-  const [partnerId, setPartnerId] = useState('');
+const AddInvoiceForm: React.FC<{ companies: Company[], brokers: Broker[], providerId: string | null, onAddInvoice: (invoice: Invoice) => void, user: User }> = ({ companies, brokers, providerId, onAddInvoice, user }) => {
+  const [companyId, setCompanyId] = useState('');
+  const [brokerId, setBrokerId] = useState<string | null>(null);
   const [invoiceMonth, setInvoiceMonth] = useState('');
   const [depositDate, setDepositDate] = useState('');
   const [amount, setAmount] = useState('');
@@ -53,9 +53,14 @@ const AddInvoiceForm: React.FC<{ partners: Partner[], onAddInvoice: (invoice: In
   const { notify } = useNotification();
   const { call } = useApi();
 
+  const availableBrokers = useMemo(() => {
+    if (!companyId) return [];
+    return brokers.filter(b => b.companyId === companyId);
+  }, [companyId, brokers]);
+
   const validate = () => {
     const errs: {[key:string]:string} = {};
-    if (!partnerId) errs.partnerId = 'Partenaire requis';
+    if (!companyId) errs.companyId = 'Compagnie requise';
     if (!invoiceMonth) errs.invoiceMonth = 'Mois requis';
     if (!depositDate) errs.depositDate = 'Date requise';
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) errs.amount = 'Montant valide requis';
@@ -63,23 +68,43 @@ const AddInvoiceForm: React.FC<{ partners: Partner[], onAddInvoice: (invoice: In
     return Object.keys(errs).length === 0;
   };
 
+  const parseMonthYearToDate = (label: string) => {
+    const [mois, annee] = label.split(' ');
+    const moisMap: Record<string, string> = {
+      janvier: '01', février: '02', mars: '03', avril: '04', mai: '05', juin: '06',
+      juillet: '07', août: '08', septembre: '09', octobre: '10', novembre: '11', décembre: '12'
+    };
+    const moisNum = moisMap[mois.toLowerCase()];
+    return moisNum && annee ? `${annee}-${moisNum}-01` : '';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
+    if (!providerId) {
+      notify("Impossible de trouver votre compte prestataire. Contactez l'administrateur.", "error");
+      return;
+    }
     setIsSubmitting(true);
     try {
-      const newInvoice = await call(() => addInvoice({
-        partnerId,
-        invoiceMonth,
-        depositDate,
-        totalAmount: parseFloat(amount)
-      }, user.id), 'Facture ajoutée');
+      const invoiceNumber = `INV-${Date.now()}`;
+      const payload: any = {
+        provider_id: providerId,
+        company_id: companyId,
+        invoice_number: invoiceNumber,
+        invoice_month: parseMonthYearToDate(invoiceMonth),
+        billed_amount: parseFloat(amount),
+        deposit_date: depositDate || undefined,
+      };
+      if (brokerId) payload.broker_id = brokerId;
+      const newInvoice = await call(() => addInvoice(payload), 'Facture ajoutée');
       if (newInvoice) {
-      onAddInvoice(newInvoice);
-      setPartnerId('');
-      setInvoiceMonth('');
-      setDepositDate('');
-      setAmount('');
+        onAddInvoice(newInvoice);
+        setCompanyId('');
+        setBrokerId(null);
+        setInvoiceMonth('');
+        setDepositDate('');
+        setAmount('');
         setErrors({});
       }
     } finally {
@@ -97,12 +122,19 @@ const AddInvoiceForm: React.FC<{ partners: Partner[], onAddInvoice: (invoice: In
       <h2 className="text-xl font-bold mb-4">Ajouter une facture</h2>
       <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
         <div>
-          <label htmlFor="partner" className="block text-sm font-medium text-slate-700 mb-1">Partenaire</label>
-          <select id="partner" value={partnerId} onChange={e => setPartnerId(e.target.value)} className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+          <label htmlFor="company" className="block text-sm font-medium text-slate-700 mb-1">Compagnie</label>
+          <select id="company" value={companyId} onChange={e => setCompanyId(e.target.value)} className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
             <option value="">Choisir...</option>
-            {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          {errors.partnerId && <p className="text-red-500 text-xs mt-1">{errors.partnerId}</p>}
+          {errors.companyId && <p className="text-red-500 text-xs mt-1">{errors.companyId}</p>}
+        </div>
+        <div>
+          <label htmlFor="broker" className="block text-sm font-medium text-slate-700 mb-1">Courtier (Optionnel)</label>
+          <select id="broker" value={brokerId || ''} onChange={e => setBrokerId(e.target.value || null)} className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" disabled={!companyId}>
+            <option value="">Aucun</option>
+            {availableBrokers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
         </div>
         <div>
           <label htmlFor="invoiceMonth" className="block text-sm font-medium text-slate-700 mb-1">Mois de la facture</label>
@@ -114,7 +146,7 @@ const AddInvoiceForm: React.FC<{ partners: Partner[], onAddInvoice: (invoice: In
         </div>
         <div>
           <label htmlFor="depositDate" className="block text-sm font-medium text-slate-700 mb-1">Date de dépôt</label>
-          <input type="date" id="depositDate" value={depositDate} onChange={e => setDepositDate(e.target.value)} className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" />
+          <input type="date" id="depositDate" value={depositDate} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDepositDate((e.target.value || '') as string)} className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" />
           {errors.depositDate && <p className="text-red-500 text-xs mt-1">{errors.depositDate}</p>}
         </div>
         <div>
@@ -130,67 +162,27 @@ const AddInvoiceForm: React.FC<{ partners: Partner[], onAddInvoice: (invoice: In
   );
 };
 
-const ReminderModal: React.FC<{ invoice: Invoice; partner: Partner; onClose: () => void }> = ({ invoice, partner, onClose }) => {
+const ReminderModal: React.FC<{ invoice: Invoice; company: Company; broker?: Broker | null; onClose: () => void }> = ({ invoice, company, broker, onClose }) => {
   const [letter, setLetter] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const { notify } = useNotification();
 
-  const generateLetter = useCallback(async () => {
-    setIsLoading(true);
-    setError('');
-
-    try {
-      if (!process.env.API_KEY) {
-        setLetter("La fonctionnalité de génération de lettre est désactivée car la clé API n'est pas configurée.");
-        setIsLoading(false);
-        return;
-      }
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      const amountPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
-      const amountRejected = invoice.rejections.reduce((sum, r) => sum + r.amount, 0);
-      const outstandingAmount = invoice.totalAmount - amountPaid - amountRejected;
-
-      const prompt = `
-        Tu es un assistant expert en comptabilité et communication professionnelle. Ta tâche est de rédiger une lettre de relance formelle et polie en français.
-
-        Voici les détails de la facture :
-        - Nom du partenaire : ${partner.name}
-        - Mois de la facture : ${invoice.invoiceMonth}
-        - Montant total de la facture : ${invoice.totalAmount.toLocaleString('fr-FR')} FCFA
-        - Montant déjà payé : ${amountPaid.toLocaleString('fr-FR')} FCFA
-        - Montant rejeté : ${amountRejected.toLocaleString('fr-FR')} FCFA
-        - Reste à régler : ${outstandingAmount.toLocaleString('fr-FR')} FCFA
-
-        Instructions pour la lettre :
-        1.  Utilise un ton professionnel, respectueux mais ferme.
-        2.  Mentionne clairement le mois de la facture concernée.
-        3.  Récapitule les montants (total, payé, rejeté, reste à régler).
-        4.  Demande la régularisation du montant restant dû dans les plus brefs délais.
-        5.  S'il y a un montant rejeté, demande des clarifications sur les raisons du rejet.
-        6.  Termine par une formule de politesse standard.
-        7.  Ne génère que le corps de la lettre, sans l'en-tête (adresse, date, etc.). Commence par "Objet : ...".
-        8.  La lettre doit être concise et aller droit au but.
-      `;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt
-      });
-      setLetter(response.text);
-    } catch (e) {
-      console.error(e);
-      setError("Une erreur est survenue lors de la génération de la lettre. Vérifiez la configuration de l'API.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [invoice, partner]);
-
   useEffect(() => {
-    generateLetter();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const fetchLetter = async () => {
+      setIsLoading(true);
+      setError('');
+      try {
+        const data = await generateReclamationLetter(invoice.id);
+        setLetter(data.letter);
+      } catch (e: any) {
+        setError(e.message || 'Erreur lors de la génération de la lettre.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchLetter();
+  }, [invoice]);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(letter);
@@ -219,64 +211,65 @@ interface RegistrationsProps {
     user: User;
 }
 
-const InvoiceTable: React.FC<{invoices: Invoice[], partners: Partner[], user: User, userMap: Map<string,string>, onDetails: (inv: Invoice) => void, onReminder: (inv: Invoice) => void, loading: boolean,
+const InvoiceTable: React.FC<{invoices: Invoice[], companies: Company[], brokers: Broker[], user: User, userMap: Map<string,string>, onDetails: (inv: Invoice) => void, onReminder: (inv: Invoice) => void, loading: boolean,
     search: string, setSearch: (search: string) => void,
-    filterPartner: string, setFilterPartner: (partner: string) => void,
+    filterCompany: string, setFilterCompany: (company: string) => void,
     filterStatus: string, setFilterStatus: (status: string) => void,
     filterDateMin: string, setFilterDateMin: (date: string) => void,
     filterDateMax: string, setFilterDateMax: (date: string) => void,
     filterAmountMin: string, setFilterAmountMin: (amount: string) => void,
-    filterAmountMax: string, setFilterAmountMax: (amount: string) => void}> = ({invoices, partners, user, userMap, onDetails, onReminder, loading,
+    filterAmountMax: string, setFilterAmountMax: (amount: string) => void}> = ({invoices, companies, brokers, user, userMap, onDetails, onReminder, loading,
     search, setSearch,
-    filterPartner, setFilterPartner,
+    filterCompany, setFilterCompany,
     filterStatus, setFilterStatus,
     filterDateMin, setFilterDateMin,
     filterDateMax, setFilterDateMax,
     filterAmountMin, setFilterAmountMin,
     filterAmountMax, setFilterAmountMax}) => {
-  const filtered = useMemo(() => invoices.filter(inv => {
-    const partnerMatch = !filterPartner || inv.partnerId === filterPartner;
+  const [page, setPage] = useState<number>(1);
+  const filtered = useMemo(() => invoices.filter((inv: Invoice) => {
+    const companyMatch = !filterCompany || inv.companyId === filterCompany;
     const status = getInvoiceStatus(inv).text;
     const statusMatch = !filterStatus || status === filterStatus;
-    const date = inv.depositDate;
+    const date = inv.depositDate ? inv.depositDate : '';
     const dateMinMatch = !filterDateMin || date >= filterDateMin;
     const dateMaxMatch = !filterDateMax || date <= filterDateMax;
     const amountMinMatch = !filterAmountMin || inv.totalAmount >= Number(filterAmountMin);
     const amountMaxMatch = !filterAmountMax || inv.totalAmount <= Number(filterAmountMax);
     const searchMatch = !search || Object.values(inv).some(v => v && v.toString().toLowerCase().includes(search.toLowerCase()));
-    return partnerMatch && statusMatch && dateMinMatch && dateMaxMatch && amountMinMatch && amountMaxMatch && searchMatch;
-  }), [invoices, filterPartner, filterStatus, filterDateMin, filterDateMax, filterAmountMin, filterAmountMax, search]);
+    return companyMatch && statusMatch && dateMinMatch && dateMaxMatch && amountMinMatch && amountMaxMatch && searchMatch;
+  }), [invoices, filterCompany, filterStatus, filterDateMin, filterDateMax, filterAmountMin, filterAmountMax, search]);
 
-  const sorted = [...filtered].sort((a,b)=>{
+  const sorted = [...filtered].sort((a: Invoice, b: Invoice) => {
     if(a.id===b.id) return 0;
     if(a.id==null) return 1;
     if(b.id==null) return -1;
     return (a.id.toString().localeCompare(b.id.toString(),undefined,{numeric:true})) * 1;
   });
   const totalPages = Math.ceil(sorted.length/10)||1;
-  const paged = sorted.slice(0, 10);
+  const paged = sorted.slice((page-1)*10, page*10);
 
   return (
     <div>
       <div className="flex flex-wrap gap-2 mb-2 items-center bg-slate-50 p-2 rounded">
-        <input placeholder="Recherche..." value={search} onChange={e=>{setSearch(e.target.value);}} className="border p-1" />
-        <select value={filterPartner} onChange={e=>setFilterPartner(e.target.value)} className="border p-1">
-          <option value="">Tous les partenaires</option>
-          {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        <input placeholder="Recherche..." value={search} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)} className="border p-1" />
+        <select value={filterCompany} onChange={e => setFilterCompany(e.target.value as string)} className="border p-1">
+          <option value="">Toutes les compagnies</option>
+          {companies.map((c: Company) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="border p-1">
+        <select value={filterStatus} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterStatus(e.target.value)} className="border p-1">
           <option value="">Tous statuts</option>
           <option value="Payé">Payé</option>
           <option value="Rejeté">Rejeté</option>
           <option value="Partiel">Partiel</option>
           <option value="En attente">En attente</option>
         </select>
-        <input type="date" value={filterDateMin} onChange={e=>setFilterDateMin(e.target.value)} className="border p-1" placeholder="Date min" />
-        <input type="date" value={filterDateMax} onChange={e=>setFilterDateMax(e.target.value)} className="border p-1" placeholder="Date max" />
-        <input type="number" value={filterAmountMin} onChange={e=>setFilterAmountMin(e.target.value)} className="border p-1" placeholder="Montant min" />
-        <input type="number" value={filterAmountMax} onChange={e=>setFilterAmountMax(e.target.value)} className="border p-1" placeholder="Montant max" />
-        {(filterPartner || filterStatus || filterDateMin || filterDateMax || filterAmountMin || filterAmountMax) && (
-          <button onClick={()=>{setFilterPartner('');setFilterStatus('');setFilterDateMin('');setFilterDateMax('');setFilterAmountMin('');setFilterAmountMax('');}} className="ml-2 px-2 py-1 bg-slate-200 rounded">Réinitialiser</button>
+        <input type="date" value={filterDateMin} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterDateMin(e.target.value)} className="border p-1" placeholder="Date min" />
+        <input type="date" value={filterDateMax} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterDateMax(e.target.value)} className="border p-1" placeholder="Date max" />
+        <input type="number" value={filterAmountMin} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterAmountMin(e.target.value)} className="border p-1" placeholder="Montant min" />
+        <input type="number" value={filterAmountMax} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterAmountMax(e.target.value)} className="border p-1" placeholder="Montant max" />
+        {(filterCompany || filterStatus || filterDateMin || filterDateMax || filterAmountMin || filterAmountMax) && (
+          <button onClick={()=>{setFilterCompany('');setFilterStatus('');setFilterDateMin('');setFilterDateMax('');setFilterAmountMin('');setFilterAmountMax('');}} className="ml-2 px-2 py-1 bg-slate-200 rounded">Réinitialiser</button>
         )}
         <span className="text-sm text-slate-500 ml-2">{sorted.length} résultat(s)</span>
       </div>
@@ -285,7 +278,8 @@ const InvoiceTable: React.FC<{invoices: Invoice[], partners: Partner[], user: Us
           <thead>
             <tr>
               <th className="cursor-pointer" onClick={()=>{}}>ID</th>
-              <th className="cursor-pointer" onClick={()=>{}}>Partenaire</th>
+              <th className="cursor-pointer" onClick={()=>{}}>Compagnie</th>
+              <th className="cursor-pointer" onClick={()=>{}}>Courtier</th>
               <th className="cursor-pointer" onClick={()=>{}}>Date dépôt</th>
               <th className="cursor-pointer" onClick={()=>{}}>Mois</th>
               <th className="cursor-pointer" onClick={()=>{}}>Montant</th>
@@ -294,19 +288,21 @@ const InvoiceTable: React.FC<{invoices: Invoice[], partners: Partner[], user: Us
             </tr>
           </thead>
           <tbody>
-            {paged.map(invoice => {
-              const partner = partners.find(p => p.id === invoice.partnerId);
+            {paged.map((invoice: Invoice) => {
+              const company = companies.find((c: Company) => c.id === invoice.companyId);
+              const broker = brokers.find((b: Broker) => b.id === invoice.brokerId);
               const status = getInvoiceStatus(invoice);
-              const totalPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
-              const totalRejected = invoice.rejections.reduce((sum, r) => sum + r.amount, 0);
+              const totalPaid = (invoice.payments || []).reduce((sum, p) => sum + p.amount, 0);
+              const totalRejected = (invoice.rejections || []).reduce((sum, r) => sum + r.amount, 0);
               const outstanding = invoice.totalAmount - totalPaid - totalRejected;
-              const providerName = userMap.get(invoice.userId) || 'Inconnu';
+              const providerName = userMap.get(invoice.providerId) || 'Inconnu';
               return (
                 <tr key={invoice.id}>
                   <td>{invoice.id}</td>
-                  <td>{partner?.name || invoice.partnerId}</td>
-                  <td>{formatDate(invoice.depositDate)}</td>
-                  <td>{invoice.invoiceMonth}</td>
+                  <td>{company?.name || invoice.companyId}</td>
+                  <td>{broker?.name || 'N/A'}</td>
+                  <td>{formatDate(invoice.depositDate ? invoice.depositDate : '')}</td>
+                  <td>{formatInvoiceMonth(invoice.invoiceMonth)}</td>
                   <td>{invoice.totalAmount}</td>
                   <td>{status.text}</td>
                   <td>
@@ -319,15 +315,15 @@ const InvoiceTable: React.FC<{invoices: Invoice[], partners: Partner[], user: Us
               );
             })}
             {paged.length === 0 && !loading && (
-              <tr><td colSpan={7} className="text-center p-8 text-slate-500">Aucune facture trouvée.</td></tr>
+              <tr><td colSpan={8} className="text-center p-8 text-slate-500">Aucune facture trouvée.</td></tr>
             )}
           </tbody>
         </table>
       </div>
       <div className="flex gap-2 items-center my-2">
-        <button disabled={page<=1} onClick={()=>setPage(p=>p-1)} className="px-2 py-1 border rounded disabled:opacity-50">Préc.</button>
+        <button disabled={page<=1} onClick={()=>setPage(page-1)} className="px-2 py-1 border rounded disabled:opacity-50">Préc.</button>
         <span>Page {page} / {totalPages}</span>
-        <button disabled={page>=totalPages} onClick={()=>setPage(p=>p+1)} className="px-2 py-1 border rounded disabled:opacity-50">Suiv.</button>
+        <button disabled={page>=totalPages} onClick={()=>setPage(page+1)} className="px-2 py-1 border rounded disabled:opacity-50">Suiv.</button>
       </div>
     </div>
   );
@@ -335,34 +331,50 @@ const InvoiceTable: React.FC<{invoices: Invoice[], partners: Partner[], user: Us
 
 const Registrations: React.FC<RegistrationsProps> = ({ user }) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [partners, setPartners] = useState<Partner[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [brokers, setBrokers] = useState<Broker[]>([]);
   const [loading, setLoading] = useState(true);
   const [invoiceForReminder, setInvoiceForReminder] = useState<Invoice | null>(null);
   const [invoiceForDetails, setInvoiceForDetails] = useState<Invoice | null>(null);
   const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
+  const [providerId, setProviderId] = useState<string | null>(null);
   const { notify } = useNotification();
   const { call } = useApi();
   // Filtres globaux
-  const [search, setSearch] = useState('');
-  const [filterPartner, setFilterPartner] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterDateMin, setFilterDateMin] = useState('');
-  const [filterDateMax, setFilterDateMax] = useState('');
-  const [filterAmountMin, setFilterAmountMin] = useState('');
-  const [filterAmountMax, setFilterAmountMax] = useState('');
+  const [search, setSearch] = useState<string>('');
+  const [filterCompany, setFilterCompany] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
+  const [filterDateMin, setFilterDateMin] = useState<string>('');
+  const [filterDateMax, setFilterDateMax] = useState<string>('');
+  const [filterAmountMin, setFilterAmountMin] = useState<string>('');
+  const [filterAmountMax, setFilterAmountMax] = useState<string>('');
+
+  // Correction ultime pour le filtre compagnie
+  const safeSetFilterCompany = (v: string | undefined) => setFilterCompany(v ?? '');
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      const [invoicesData, partnersData, usersData] = await Promise.all([
+      const [invoicesData, companiesData, brokersData, providersData, usersData] = await Promise.all([
         getInvoices(),
+        getCompanies(),
+        getBrokers(),
         getProviders(),
         user.role === 'admin' ? getUsers() : Promise.resolve([])
       ]);
-      setInvoices(invoicesData.sort((a,b) => new Date(b.depositDate).getTime() - new Date(a.depositDate).getTime()));
-      setPartners(partnersData);
+      setInvoices(invoicesData.sort((a: Invoice, b: Invoice) => new Date(b.depositDate ? b.depositDate : '').getTime() - new Date(a.depositDate ? a.depositDate : '').getTime()));
+      setCompanies(companiesData);
+      setBrokers(brokersData);
+      // Trouver le provider lié à l'utilisateur connecté
+      if (user.role === 'provider') {
+        console.log('DEBUG providersData:', providersData);
+        console.log('DEBUG user:', user);
+        const found = providersData.find((p: any) => p.user?.id == user.id || p.user?.username == user.username);
+        console.log('DEBUG provider trouvé:', found);
+        setProviderId(found ? found.id : null);
+      }
       if (user.role === 'admin') {
-        setUserMap(new Map(usersData.map(u => [u.id, u.username])));
+        setUserMap(new Map(usersData.map((u: User) => [u.id, u.username])));
       }
       setLoading(false);
     };
@@ -370,23 +382,34 @@ const Registrations: React.FC<RegistrationsProps> = ({ user }) => {
   }, [user]);
 
   const handleAddInvoice = (newInvoice: Invoice) => {
-    setInvoices(prev => [newInvoice, ...prev].sort((a,b) => new Date(b.depositDate).getTime() - new Date(a.depositDate).getTime()));
+    setInvoices((prev: Invoice[]) => [newInvoice, ...prev].sort((a: Invoice, b: Invoice) => new Date(b.depositDate ? b.depositDate : '').getTime() - new Date(a.depositDate ? a.depositDate : '').getTime()));
   };
   
-  const partnerMap = new Map(partners.map(p => [p.id, p]));
+  const companyMap = new Map(companies.map((c: Company) => [c.id, c]));
+  const brokerMap = new Map(brokers.map((b: Broker) => [b.id, b]));
 
-  const handleUpdateInvoice = (updatedInvoice: Invoice) => {
-    setInvoices(prev => prev.map(inv => inv.id === updatedInvoice.id ? updatedInvoice : inv));
-    // Keep the details modal open with the updated data
-    if (invoiceForDetails?.id === updatedInvoice.id) {
+  const handleUpdateInvoice = async (updatedInvoice: Invoice) => {
+    // Si la facture reçue n'a pas de payments/rejections, on refetch la liste complète
+    if (!updatedInvoice.payments || !updatedInvoice.rejections) {
+      const refreshed = await getInvoices();
+      setInvoices(refreshed.sort((a: Invoice, b: Invoice) => new Date(b.depositDate ? b.depositDate : '').getTime() - new Date(a.depositDate ? a.depositDate : '').getTime()));
+      // Met aussi à jour le détail si modal ouvert
+      if (invoiceForDetails) {
+        const found = refreshed.find((inv: Invoice) => inv.id === invoiceForDetails.id);
+        if (found) setInvoiceForDetails(found);
+      }
+    } else {
+      setInvoices((prev: Invoice[]) => prev.map((inv: Invoice) => inv.id === updatedInvoice.id ? updatedInvoice : inv));
+      if (invoiceForDetails?.id === updatedInvoice.id) {
         setInvoiceForDetails(updatedInvoice);
+      }
     }
   };
   
   const handleExport = async (format: 'excel' | 'pdf') => {
     try {
       const params: Record<string, string | number> = {};
-      if (filterPartner) params.partner = filterPartner;
+      if (filterCompany) params.company = filterCompany;
       if (filterStatus) params.status = filterStatus;
       if (filterDateMin) params.date_min = filterDateMin;
       if (filterDateMax) params.date_max = filterDateMax;
@@ -406,9 +429,10 @@ const Registrations: React.FC<RegistrationsProps> = ({ user }) => {
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
     try {
-      await call(() => importInvoices(e.target.files[0]), 'Import réussi !');
+      await call(() => importInvoices(files[0]), 'Import réussi !');
       window.location.reload();
     } catch (e: any) {}
   };
@@ -439,14 +463,15 @@ const Registrations: React.FC<RegistrationsProps> = ({ user }) => {
           <input type="file" accept=".xlsx" onChange={handleImport} style={{ display: 'none' }} />
         </label>
       </div>
-      {user.role === 'provider' && <AddInvoiceForm partners={partners} onAddInvoice={handleAddInvoice} user={user} />}
+      {user.role === 'provider' && <AddInvoiceForm companies={companies} brokers={brokers} providerId={providerId} onAddInvoice={handleAddInvoice} user={user} />}
       <div className="bg-white p-6 rounded-lg shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">Liste des factures</h2>
         </div>
         <InvoiceTable
           invoices={invoices}
-          partners={partners}
+          companies={companies}
+          brokers={brokers}
           user={user}
           userMap={userMap}
           onDetails={setInvoiceForDetails}
@@ -454,7 +479,7 @@ const Registrations: React.FC<RegistrationsProps> = ({ user }) => {
           loading={loading}
           // Filtres synchronisés
           search={search} setSearch={setSearch}
-          filterPartner={filterPartner} setFilterPartner={setFilterPartner}
+          filterCompany={filterCompany} setFilterCompany={setFilterCompany}
           filterStatus={filterStatus} setFilterStatus={setFilterStatus}
           filterDateMin={filterDateMin} setFilterDateMin={setFilterDateMin}
           filterDateMax={filterDateMax} setFilterDateMax={setFilterDateMax}
@@ -462,17 +487,19 @@ const Registrations: React.FC<RegistrationsProps> = ({ user }) => {
           filterAmountMax={filterAmountMax} setFilterAmountMax={setFilterAmountMax}
         />
       </div>
-       {invoiceForReminder && partnerMap.get(invoiceForReminder.partnerId) && (
+       {invoiceForReminder && companyMap.get(invoiceForReminder.companyId) && (
         <ReminderModal 
           invoice={invoiceForReminder} 
-          partner={partnerMap.get(invoiceForReminder.partnerId)!} 
+          company={companyMap.get(invoiceForReminder.companyId)!} 
+          broker={invoiceForReminder.brokerId ? brokerMap.get(invoiceForReminder.brokerId) || null : null}
           onClose={() => setInvoiceForReminder(null)} 
         />
       )}
-       {invoiceForDetails && partnerMap.get(invoiceForDetails.partnerId) && (
+       {invoiceForDetails && companyMap.get(invoiceForDetails.companyId) && (
         <InvoiceDetailModal 
           invoice={invoiceForDetails} 
-          partner={partnerMap.get(invoiceForDetails.partnerId)!} 
+          company={companyMap.get(invoiceForDetails.companyId)!}
+          broker={invoiceForDetails.brokerId ? brokerMap.get(invoiceForDetails.brokerId) || null : null}
           onClose={() => setInvoiceForDetails(null)}
           onUpdate={handleUpdateInvoice}
         />
@@ -482,3 +509,12 @@ const Registrations: React.FC<RegistrationsProps> = ({ user }) => {
 };
 
 export default Registrations;
+
+function formatInvoiceMonth(month: string) {
+  if (!month) return '';
+  // Si c'est déjà un label (ex: Janvier 2025)
+  if (isNaN(Date.parse(month))) return month;
+  // Sinon, formatte YYYY-MM ou YYYY-MM-DD
+  const d = new Date(month);
+  return d.toLocaleString('fr-FR', { month: 'long', year: 'numeric' });
+}

@@ -1,11 +1,10 @@
 
 import React from 'react';
 import { Page, User } from '../types';
+import { Link, useLocation } from 'react-router-dom';
 
 interface SidebarProps {
   user: User;
-  currentPage: Page;
-  setCurrentPage: (page: Page) => void;
   onLogout: () => void;
   isCollapsed: boolean;
   setCollapsed: (isCollapsed: boolean) => void;
@@ -38,17 +37,27 @@ const NavIcon: React.FC<{ name: Page | 'logout' }> = ({ name }: { name: Page | '
   return <span>{icons[name]}</span>;
 };
 
-const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, setCurrentPage, onLogout, isCollapsed, setCollapsed }) => {
-  const baseNavItems: { id: Page; label: string }[] = [
-    { id: 'dashboard', label: 'Tableau de bord' },
-    { id: 'registrations', label: 'Enregistrements' },
-    { id: 'payments', label: 'Paiements' },
-    { id: 'partners', label: 'Partenaires' },
+const pageToPath: { [key in Page]: string } = {
+  dashboard: '/',
+  notifications: '/notifications',
+  registrations: '/registrations',
+  payments: '/payments',
+  partners: '/partners',
+  admin: '/admin',
+};
+
+const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setCollapsed }) => {
+  const location = useLocation();
+  const baseNavItems: { id: Page; label: string; path: string }[] = [
+    { id: 'dashboard', label: 'Tableau de bord', path: pageToPath.dashboard },
+    { id: 'registrations', label: 'Enregistrements', path: pageToPath.registrations },
+    { id: 'payments', label: 'Paiements', path: pageToPath.payments },
+    { id: 'partners', label: 'Partenaires', path: pageToPath.partners },
   ];
   
-  const adminNavItem = { id: 'admin' as Page, label: 'Administration' };
+  const adminNavItem = { id: 'admin' as Page, label: 'Administration', path: pageToPath.admin };
   const navItems = user.role === 'admin' ? [...baseNavItems, adminNavItem] : baseNavItems;
-  navItems.splice(1, 0, { id: 'notifications' as Page, label: 'Notifications' });
+  navItems.splice(1, 0, { id: 'notifications' as Page, label: 'Notifications', path: pageToPath.notifications });
 
 
   return (
@@ -68,21 +77,21 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, setCurrentPage, on
         <ul>
           {navItems.map((item) => (
             <li key={item.id}>
-              <button
-                onClick={() => setCurrentPage(item.id)}
+              <Link
+                to={item.path}
                 className={`w-full flex items-center px-4 py-3 my-1 rounded-lg text-sm font-medium transition-colors duration-200 ${
                   isCollapsed ? 'justify-center' : ''
                 } ${
-                  currentPage === item.id
+                  location.pathname === item.path
                     ? 'bg-slate-900 text-white'
                     : 'text-slate-400 hover:bg-slate-700 hover:text-white'
                 }`}
                 title={isCollapsed ? item.label : undefined}
-                aria-current={currentPage === item.id ? 'page' : undefined}
+                aria-current={location.pathname === item.path ? 'page' : undefined}
               >
                 <NavIcon name={item.id} />
                 {!isCollapsed && <span className="ml-3 whitespace-nowrap">{item.label}</span>}
-              </button>
+              </Link>
             </li>
           ))}
         </ul>

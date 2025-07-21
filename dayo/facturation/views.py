@@ -149,10 +149,19 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         profile.subscription_status = 'ACTIVE'
         profile.save()
 
-        provider = Provider.objects.get(user=profile.user)
-        provider.subscription_status = 'ACTIVE'
-        provider.subscription_expiry = expiry
-        provider.save()
+        # Création du Provider si inexistant
+        provider, created = Provider.objects.get_or_create(
+            user=profile.user,
+            defaults={
+                'name': profile.user.username,
+                'subscription_status': 'ACTIVE',
+                'subscription_expiry': expiry
+            }
+        )
+        if not created:
+            provider.subscription_status = 'ACTIVE'
+            provider.subscription_expiry = expiry
+            provider.save()
 
         return Response({
             'message': f'Account activated until {expiry}',
@@ -209,7 +218,7 @@ class ProviderViewSet(viewsets.ModelViewSet):
 class BrokerViewSet(viewsets.ModelViewSet):
     queryset = Broker.objects.all()
     serializer_class = BrokerSerializer
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAdminOrActiveProvider]
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -242,7 +251,7 @@ class BrokerViewSet(viewsets.ModelViewSet):
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all()
     serializer_class = CompanySerializer
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAdminOrActiveProvider]
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -450,7 +459,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         {invoice.provider.name}
         """
         # Send email to company
-        send_notification_email.delay(
+        send_notification_email(
             subject=f'Payment Reclamation for Invoice {invoice.invoice_number}',
             message=letter,
             recipient_list=[invoice.company.contact_email]

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Invoice, Partner } from '../types';
+import { Invoice, Company, Broker } from '../types';
 import { addPayment, addRejection, generateReclamationLetter } from '../services/api';
 import Modal from './Modal';
 import { useNotification } from './NotificationContext';
@@ -13,12 +13,13 @@ const formatDate = (dateString: string) => {
 
 interface InvoiceDetailModalProps {
     invoice: Invoice;
-    partner: Partner;
+    company: Company;
+    broker: Broker | null;
     onClose: () => void;
     onUpdate: (updatedInvoice: Invoice) => void;
 }
 
-const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: Invoice) => void }> = ({ invoiceId, onUpdate }) => {
+const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: Invoice) => void; isSettled?: boolean }> = ({ invoiceId, onUpdate, isSettled }) => {
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
     const [rejectionAmount, setRejectionAmount] = useState('');
@@ -51,7 +52,12 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
         if (!validatePayment()) return;
         setIsSubmittingPayment(true);
         try {
-            const updatedInvoice = await call(() => addPayment(invoiceId, { amount: parseFloat(paymentAmount), date: paymentDate }), 'Paiement ajouté');
+            const updatedInvoice = await call(() => addPayment(invoiceId, {
+                invoice: invoiceId,
+                amount: parseFloat(paymentAmount),
+                payment_date: paymentDate,
+                payment_method: 'VIREMENT' // ou laisse vide si non utilisé
+            }), 'Paiement ajouté');
             if (updatedInvoice) {
             onUpdate(updatedInvoice);
             setPaymentAmount('');
@@ -67,7 +73,12 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
         if (!validateRejection()) return;
         setIsSubmittingRejection(true);
         try {
-            const updatedInvoice = await call(() => addRejection(invoiceId, { amount: parseFloat(rejectionAmount), date: rejectionDate, reason: rejectionReason }), 'Rejet ajouté');
+            const updatedInvoice = await call(() => addRejection(invoiceId, {
+                invoice: invoiceId,
+                rejected_amount: parseFloat(rejectionAmount),
+                rejection_reason: rejectionReason,
+                rejection_date: rejectionDate
+            }), 'Rejet ajouté');
             if (updatedInvoice) {
             onUpdate(updatedInvoice);
             setRejectionAmount('');
@@ -79,6 +90,13 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
         }
     };
 
+    if (isSettled) {
+        return (
+            <div className="col-span-2 text-center text-green-700 font-semibold py-8">
+                Cette facture est totalement réglée. Aucun paiement ou rejet supplémentaire n'est possible.
+            </div>
+        );
+    }
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 mt-6 pt-6 border-t">
@@ -131,7 +149,7 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
 }
 
 
-const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, partner, onClose, onUpdate }) => {
+const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, company, broker, onClose, onUpdate }) => {
     
     const stats = useMemo(() => {
         const totalPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
@@ -140,7 +158,7 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, partne
         return { totalPaid, totalRejected, outstanding };
     }, [invoice]);
 
-    const title = `Détails de la facture #${invoice.id.toUpperCase()}`;
+    const title = `Détails de la facture #${String(invoice.id).toUpperCase()}`;
     
     const [reclamationLetter, setReclamationLetter] = useState<string | null>(null);
     const [isLoadingLetter, setIsLoadingLetter] = useState(false);
@@ -162,9 +180,15 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, partne
             {/* Summary */}
             <div className="bg-slate-50 p-4 rounded-lg mb-6">
                 <div className="flex justify-between items-center mb-2">
-                    <p className="text-slate-600">Partenaire:</p>
-                    <p className="font-bold text-lg">{partner.name}</p>
+                    <p className="text-slate-600">Compagnie:</p>
+                    <p className="font-bold text-lg">{company.name}</p>
                 </div>
+                {broker &&
+                  <div className="flex justify-between items-center mb-2">
+                      <p className="text-slate-600">Courtier:</p>
+                      <p className="font-semibold">{broker.name}</p>
+                  </div>
+                }
                  <div className="flex justify-between items-center mb-4">
                     <p className="text-slate-600">Mois de la facture:</p>
                     <p className="font-semibold">{invoice.invoiceMonth}</p>
@@ -191,39 +215,7 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, partne
             </div>
 
             {/* Transactions */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                <div>
-                    <h3 className="text-lg font-semibold text-slate-700 mb-2">Paiements</h3>
-                    {invoice.payments.length > 0 ? (
-                        <ul className="space-y-2">
-                            {invoice.payments.map(p => (
-                                <li key={p.id} className="flex justify-between p-2 bg-green-50 rounded-md">
-                                    <span>{formatDate(p.date)}</span>
-                                    <span className="font-mono font-semibold text-green-700">{formatCurrency(p.amount)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : <p className="text-slate-500 text-sm italic">Aucun paiement enregistré.</p>}
-                </div>
-                 <div>
-                    <h3 className="text-lg font-semibold text-slate-700 mb-2">Rejets</h3>
-                    {invoice.rejections.length > 0 ? (
-                        <ul className="space-y-2">
-                             {invoice.rejections.map(r => (
-                                <li key={r.id} className="p-2 bg-red-50 rounded-md">
-                                    <div className="flex justify-between">
-                                        <span>{formatDate(r.date)}</span>
-                                        <span className="font-mono font-semibold text-red-700">{formatCurrency(r.amount)}</span>
-                                    </div>
-                                    <p className="text-sm text-slate-600 italic mt-1">Motif: {r.reason}</p>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : <p className="text-slate-500 text-sm italic">Aucun rejet enregistré.</p>}
-                </div>
-            </div>
-
-            <TransactionForm invoiceId={invoice.id} onUpdate={onUpdate} />
+            <TransactionForm invoiceId={invoice.id} onUpdate={onUpdate} isSettled={stats.totalPaid + stats.totalRejected >= invoice.totalAmount} />
 
             <div className="mt-6">
                 <button onClick={handleGenerateLetter} className="bg-orange-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-orange-700 text-sm">

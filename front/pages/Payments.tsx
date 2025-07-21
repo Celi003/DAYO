@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getInvoices, getProviders, getUsers } from '../services/api';
-import { Invoice, Partner, User } from '../types';
+import { getInvoices, getProviders, getUsers, getCompanies, getBrokers } from '../services/api';
+import { Invoice, Company, Broker, User } from '../types';
 
 const formatCurrency = (value: number) => `${new Intl.NumberFormat('fr-FR').format(value)} FCFA`;
 const formatDate = (dateString: string) => {
@@ -30,17 +30,31 @@ const PaymentTable: React.FC<{invoices: Invoice[], partners: Partner[], user: Us
   const [sort, setSort] = useState<{col:string, asc:boolean}>({col:'',asc:true});
   const pageSize = 10;
 
-  const filtered = invoices.filter(inv =>
-    Object.values(inv).some(v => v && v.toString().toLowerCase().includes(search.toLowerCase()))
+  // Si tu veux garder une recherche globale sur les invoices :
+  const filtered = invoices.filter((inv: Invoice) =>
+    [inv.id, inv.companyId, inv.brokerId, inv.depositDate, inv.invoiceMonth, inv.totalAmount]
+      .some(v => v && v.toString().toLowerCase().includes(search.toLowerCase()))
   );
-  const sorted = sort.col ? [...filtered].sort((a,b)=>{
-    if(a[sort.col]===b[sort.col]) return 0;
-    if(a[sort.col]==null) return 1;
-    if(b[sort.col]==null) return -1;
-    return (a[sort.col].toString().localeCompare(b[sort.col].toString(),undefined,{numeric:true})) * (sort.asc?1:-1);
+  // Tri uniquement sur les colonnes existantes
+  const sortKeys: { [key: string]: (inv: Invoice) => string | number | undefined } = {
+    id: (inv: Invoice) => inv.id,
+    companyId: (inv: Invoice) => companyMap.get(inv.companyId),
+    brokerId: (inv: Invoice) => brokerMap.get(inv.brokerId || ''),
+    depositDate: (inv: Invoice) => inv.depositDate,
+    invoiceMonth: (inv: Invoice) => inv.invoiceMonth,
+    totalAmount: (inv: Invoice) => inv.totalAmount,
+  };
+  const sorted = sort.col && sortKeys[sort.col] ? [...filtered].sort((a: Invoice, b: Invoice) => {
+    const aVal = sortKeys[sort.col](a);
+    const bVal = sortKeys[sort.col](b);
+    if (aVal === bVal) return 0;
+    if (aVal == null) return 1;
+    if (bVal == null) return -1;
+    if (typeof aVal === 'number' && typeof bVal === 'number') return (aVal - bVal) * (sort.asc ? 1 : -1);
+    return aVal?.toString().localeCompare(bVal?.toString(), undefined, { numeric: true }) * (sort.asc ? 1 : -1);
   }) : filtered;
-  const totalPages = Math.ceil(sorted.length/pageSize)||1;
-  const paged = sorted.slice((page-1)*pageSize, page*pageSize);
+  const totalPages = Math.ceil(sorted.length / pageSize) || 1;
+  const paged = sorted.slice((page - 1) * pageSize, page * pageSize);
 
   const handleSort = (col:string) => {
     setSort(s => s.col===col ? {col,asc:!s.asc} : {col,asc:true});
@@ -65,17 +79,17 @@ const PaymentTable: React.FC<{invoices: Invoice[], partners: Partner[], user: Us
             </tr>
           </thead>
           <tbody>
-            {paged.map(invoice => {
-              const partner = partners.find(p => p.id === invoice.partnerId);
-              const totalPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
-              const totalRejected = invoice.rejections.reduce((sum, r) => sum + r.amount, 0);
+            {paged.map((invoice: Invoice) => {
+              const partnerName = companyMap.get(invoice.companyId) || (invoice.brokerId ? brokerMap.get(invoice.brokerId) : undefined) || 'N/A';
+              const totalPaid = (invoice.payments || []).reduce((sum, p) => sum + p.amount, 0);
+              const totalRejected = (invoice.rejections || []).reduce((sum, r) => sum + r.amount, 0);
               const outstanding = invoice.totalAmount - totalPaid - totalRejected;
               return (
                 <tr key={invoice.id}>
                   <td>{invoice.id}</td>
-                  <td>{partner?.name || invoice.partnerId}</td>
-                  <td>{formatDate(invoice.depositDate)}</td>
-                  <td>{invoice.invoiceMonth}</td>
+                  <td>{partnerName}</td>
+                  <td>{formatDate(invoice.depositDate || '')}</td>
+                  <td>{formatInvoiceMonth(invoice.invoiceMonth)}</td>
                   <td>{invoice.totalAmount}</td>
                   <td>{outstanding <= 0 ? 'Payée' : 'En attente'}</td>
                 </tr>
@@ -98,7 +112,8 @@ const PaymentTable: React.FC<{invoices: Invoice[], partners: Partner[], user: Us
 
 const Payments: React.FC<PaymentsProps> = ({ user }) => {
     const [invoices, setInvoices] = useState<Invoice[]>([]);
-    const [partners, setPartners] = useState<Partner[]>([]);
+    const [companies, setCompanies] = useState<Company[]>([]);
+    const [brokers, setBrokers] = useState<Broker[]>([]);
     const [loading, setLoading] = useState(true);
     const [filterPartner, setFilterPartner] = useState('');
     const [filterType, setFilterType] = useState('');
@@ -116,28 +131,31 @@ const Payments: React.FC<PaymentsProps> = ({ user }) => {
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
-            const [invoicesData, partnersData, usersData] = await Promise.all([
+            const [invoicesData, companiesData, brokersData, usersData] = await Promise.all([
                 getInvoices(),
-                getProviders(),
+                getCompanies(),
+                getBrokers(),
                 user.role === 'admin' ? getUsers() : Promise.resolve([])
             ]);
             setInvoices(invoicesData);
-            setPartners(partnersData);
+            setCompanies(companiesData);
+            setBrokers(brokersData);
             if (user.role === 'admin') {
-                setUserMap(new Map(usersData.map(u => [u.id, u.username])));
+                setUserMap(new Map((usersData as User[]).map((u: User) => [u.id, u.username])));
             }
             setLoading(false);
         };
         fetchData();
     }, [user]);
 
-    const partnerMap = useMemo(() => new Map(partners.map(p => [p.id, p.name])), [partners]);
+    const companyMap = useMemo(() => new Map(companies.map(c => [c.id, c.name])), [companies]);
+    const brokerMap = useMemo(() => new Map(brokers.map(b => [b.id, b.name])), [brokers]);
 
     const transactions = useMemo(() => {
         const allTransactions: Transaction[] = [];
-        invoices.forEach(invoice => {
-            const partnerName = partnerMap.get(invoice.partnerId) || 'Inconnu';
-            const providerName = user.role === 'admin' ? (userMap.get(invoice.userId) || 'Inconnu') : undefined;
+        invoices.forEach((invoice: Invoice) => {
+            const partnerName = companyMap.get(invoice.companyId) || (invoice.brokerId ? brokerMap.get(invoice.brokerId) : undefined) || 'Inconnu';
+            // Pas de userId sur Invoice, donc providerName non affiché
 
             invoice.payments.forEach(p => {
                 allTransactions.push({
@@ -146,8 +164,7 @@ const Payments: React.FC<PaymentsProps> = ({ user }) => {
                     partnerName,
                     invoiceMonth: invoice.invoiceMonth,
                     type: 'Paiement',
-                    amount: p.amount,
-                    providerName
+                    amount: p.amount
                 });
             });
             invoice.rejections.forEach(r => {
@@ -158,17 +175,16 @@ const Payments: React.FC<PaymentsProps> = ({ user }) => {
                     invoiceMonth: invoice.invoiceMonth,
                     type: 'Rejet',
                     amount: r.amount,
-                    reason: r.reason,
-                    providerName
+                    reason: r.reason
                 });
             });
         });
         return allTransactions;
-    }, [invoices, partnerMap, userMap, user.role]);
+    }, [invoices, companyMap, brokerMap]);
     
     const filteredTransactions = useMemo(() => {
         return transactions.filter(t => {
-            const partnerMatch = !filterPartner || t.partnerName === partnerMap.get(filterPartner);
+            const partnerMatch = !filterPartner || t.partnerName === companyMap.get(filterPartner) || t.partnerName === brokerMap.get(filterPartner);
             const typeMatch = !filterType || t.type === filterType;
             const statusMatch = !filterStatus || (
                 (filterStatus === 'Payée' && t.type === 'Paiement') ||
@@ -181,21 +197,24 @@ const Payments: React.FC<PaymentsProps> = ({ user }) => {
             const searchMatch = !search || Object.values(t).some(v => v && v.toString().toLowerCase().includes(search.toLowerCase()));
             return partnerMatch && typeMatch && statusMatch && dateMatch && amountMatch && searchMatch;
         });
-    }, [transactions, filterPartner, filterType, filterStatus, filterDateMin, filterDateMax, filterAmountMin, filterAmountMax, search, partnerMap]);
+    }, [transactions, filterPartner, filterType, filterStatus, filterDateMin, filterDateMax, filterAmountMin, filterAmountMax, search, companyMap, brokerMap]);
 
     const sortedTransactions = useMemo(() => {
         if (!sort.col) return filteredTransactions;
-        return [...filteredTransactions].sort((a, b) => {
-            if (a[sort.col] === b[sort.col]) return 0;
-            if (a[sort.col] == null) return 1;
-            if (b[sort.col] == null) return -1;
+        return [...filteredTransactions].sort((a: Transaction, b: Transaction) => {
             if (sort.col === 'amount') {
                 return (a.amount - b.amount) * (sort.asc ? 1 : -1);
             }
             if (sort.col === 'date') {
                 return (new Date(a.date).getTime() - new Date(b.date).getTime()) * (sort.asc ? 1 : -1);
             }
-            return a[sort.col].toString().localeCompare(b[sort.col].toString(), undefined, { numeric: true }) * (sort.asc ? 1 : -1);
+            // Pour partnerName, invoiceMonth, type, reason
+            const aVal = (a as any)[sort.col];
+            const bVal = (b as any)[sort.col];
+            if (aVal === bVal) return 0;
+            if (aVal == null) return 1;
+            if (bVal == null) return -1;
+            return aVal.toString().localeCompare(bVal.toString(), undefined, { numeric: true }) * (sort.asc ? 1 : -1);
         });
     }, [filteredTransactions, sort]);
 
@@ -236,7 +255,8 @@ const Payments: React.FC<PaymentsProps> = ({ user }) => {
                     className="p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white"
                 >
                     <option value="">Tous les partenaires</option>
-                    {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {brokers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
                 <select 
                     value={filterType} 
@@ -340,3 +360,12 @@ const Payments: React.FC<PaymentsProps> = ({ user }) => {
 };
 
 export default Payments;
+
+function formatInvoiceMonth(month: string) {
+  if (!month) return '';
+  // Si c'est déjà un label (ex: Janvier 2025)
+  if (isNaN(Date.parse(month))) return month;
+  // Sinon, formatte YYYY-MM ou YYYY-MM-DD
+  const d = new Date(month);
+  return d.toLocaleString('fr-FR', { month: 'long', year: 'numeric' });
+}

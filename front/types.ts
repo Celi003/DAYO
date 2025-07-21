@@ -9,16 +9,24 @@ export interface User {
   permissions?: string[]; // ex: ['can_edit_invoice', 'can_view_payments']
 }
 
-export interface Partner {
+export interface Company {
   id: string;
   name: string;
+  address: string;
+}
+
+export interface Broker {
+  id: string;
+  name: string;
+  companyId?: string;
 }
 
 export interface Invoice {
   id: string;
-  userId: string; // The ID of the provider this invoice belongs to
-  partnerId: string;
-  depositDate: string; // YYYY-MM-DD
+  providerId: string; // The ID of the provider this invoice belongs to
+  companyId: string;
+  brokerId: string | null;
+  depositDate?: string;
   invoiceMonth: string; // e.g., "Janvier 2025"
   totalAmount: number;
   payments: Payment[];

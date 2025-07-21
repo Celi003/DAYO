@@ -20,7 +20,6 @@ const Notifications = React.lazy(() => import('./pages/Notifications'));
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
@@ -36,7 +35,6 @@ const App: React.FC = () => {
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    setCurrentPage('dashboard');
   };
 
   const handleLogout = () => {
@@ -44,29 +42,20 @@ const App: React.FC = () => {
     setCurrentUser(null);
   };
 
-  const renderPage = () => {
-    if (!currentUser) return null;
+  const Layout = ({ children }: { children: React.ReactNode }) => (
+    <div className="flex h-screen bg-slate-100">
+      <Sidebar
+        user={currentUser!}
+        onLogout={handleLogout}
+        isCollapsed={isSidebarCollapsed}
+        setCollapsed={setIsSidebarCollapsed}
+      />
+      <main className="flex-1 overflow-y-auto transition-all duration-300 ease-in-out p-6">
+        {children}
+      </main>
+    </div>
+  );
 
-    switch (currentPage) {
-      case 'dashboard':
-        return <Dashboard user={currentUser} />;
-      case 'registrations':
-        return <Registrations user={currentUser} />;
-      case 'payments':
-        return <Payments user={currentUser} />;
-      case 'partners':
-        return <Partners user={currentUser} />;
-      case 'admin':
-        if (currentUser.role === 'admin') return <Admin />;
-        if (currentUser.role === 'subadmin') return <Admin subadminMode user={currentUser} />;
-        return <Dashboard user={currentUser} />;
-      case 'notifications':
-        return <Notifications />;
-      default:
-        return <Dashboard user={currentUser} />;
-    }
-  };
-  
   if (isLoading) {
     return <div className="flex items-center justify-center h-screen bg-slate-100"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-slate-500"></div></div>;
   }
@@ -105,26 +94,18 @@ const App: React.FC = () => {
     <NotificationProvider>
       <Router>
         <Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-100"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-slate-500"></div></div>}>
-        <Routes>
-          <Route path="/" element={
-            <div className="flex h-screen bg-slate-100">
-              <Sidebar
-                user={currentUser}
-                currentPage={currentPage}
-                setCurrentPage={setCurrentPage}
-                onLogout={handleLogout}
-                isCollapsed={isSidebarCollapsed}
-                setCollapsed={setIsSidebarCollapsed}
-              />
-              <main className="flex-1 overflow-y-auto transition-all duration-300 ease-in-out">
-                {renderPage()}
-              </main>
-            </div>
-          } />
-          <Route path="/entities" element={<Entities />} />
-          <Route path="/payment-details" element={<PaymentDetails />} />
-          <Route path="/audit-log" element={<AuditLog />} />
-        </Routes>
+          <Routes>
+            <Route path="/" element={<Layout><Dashboard user={currentUser} /></Layout>} />
+            <Route path="/notifications" element={<Layout><Notifications /></Layout>} />
+            <Route path="/registrations" element={<Layout><Registrations user={currentUser} /></Layout>} />
+            <Route path="/payments" element={<Layout><Payments user={currentUser} /></Layout>} />
+            <Route path="/partners" element={<Layout><Partners user={currentUser} /></Layout>} />
+            <Route path="/admin" element={<Layout>{currentUser.role === 'admin' ? <Admin /> : <Dashboard user={currentUser} />}</Layout>} />
+            <Route path="/entities" element={<Layout><Entities /></Layout>} />
+            <Route path="/payment-details" element={<Layout><PaymentDetails /></Layout>} />
+            <Route path="/audit-log" element={<Layout><AuditLog /></Layout>} />
+            {/* Garder les routes sans layout pour login/signup si nécessaire */}
+          </Routes>
         </Suspense>
       </Router>
     </NotificationProvider>

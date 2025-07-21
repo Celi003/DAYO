@@ -59,9 +59,10 @@ class Invoice(models.Model):
     )
 
     provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='invoices')
-    broker = models.ForeignKey(Broker, on_delete=models.CASCADE, related_name='invoices')
+    broker = models.ForeignKey(Broker, on_delete=models.CASCADE, related_name='invoices', null=True, blank=True)
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='invoices')
     invoice_number = models.CharField(max_length=100)
+    deposit_date = models.DateField(null=True, blank=True)
     invoice_month = models.DateField()
     billed_amount = models.DecimalField(max_digits=12, decimal_places=2)
     paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)

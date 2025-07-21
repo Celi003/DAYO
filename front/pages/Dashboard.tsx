@@ -433,7 +433,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
               aria-label="Réinitialiser tous les filtres"
             >
               Voir tout
-            </button>
+          </button>
           )}
         </div>
         <div className="flex gap-2">
@@ -471,7 +471,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
           tooltip="Montant restant à régler sur les factures pour l'année et les filtres sélectionnés."
           trend={<Trend current={stats.outstanding} previous={prevStats.outstanding} />}
         />
-      </div>
+                            </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
         <div className="bg-white p-6 rounded-lg shadow-sm">
           <h2 className="text-lg font-semibold mb-4">Évolution mensuelle par statut ({selectedYear}) <span className='ml-2 text-slate-400' title="Montants facturés, payés, rejetés et en attente par mois.">?</span></h2>
@@ -541,31 +541,31 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       </div>
 
       <Suspense fallback={<div className="flex items-center justify-center h-full text-slate-500">Chargement de la modale...</div>}>
-        <Modal
-          isOpen={openModal === 'revenue'}
-          onClose={() => setOpenModal(null)}
-          title={`Détail du chiffre d'affaires pour ${selectedYear}`}
-        >
-          <RevenueDetailsModalContent />
-        </Modal>
+      <Modal
+        isOpen={openModal === 'revenue'}
+        onClose={() => setOpenModal(null)}
+        title={`Détail du chiffre d'affaires pour ${selectedYear}`}
+      >
+        <RevenueDetailsModalContent />
+      </Modal>
       </Suspense>
       <Suspense fallback={<div className="flex items-center justify-center h-full text-slate-500">Chargement de la modale...</div>}>
-        <Modal
-          isOpen={openModal === 'distribution'}
-          onClose={() => setOpenModal(null)}
-          title={`Détail de la répartition par partenaire (${selectedYear})`}
-        >
-          <DistributionDetailsModalContent />
-        </Modal>
+      <Modal
+        isOpen={openModal === 'distribution'}
+        onClose={() => setOpenModal(null)}
+        title={`Détail de la répartition par partenaire (${selectedYear})`}
+      >
+        <DistributionDetailsModalContent />
+      </Modal>
       </Suspense>
       <Suspense fallback={<div className="flex items-center justify-center h-full text-slate-500">Chargement de la modale...</div>}>
-        <Modal
-          isOpen={openModal === 'status'}
-          onClose={() => setOpenModal(null)}
-          title={`Détail de l'état des paiements par partenaire (${selectedYear})`}
-        >
-          <StatusDetailsModalContent />
-        </Modal>
+      <Modal
+        isOpen={openModal === 'status'}
+        onClose={() => setOpenModal(null)}
+        title={`Détail de l'état des paiements par partenaire (${selectedYear})`}
+      >
+        <StatusDetailsModalContent />
+      </Modal>
       </Suspense>
     </div>
   );

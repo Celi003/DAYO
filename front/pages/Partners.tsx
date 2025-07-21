@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getInvoices, getProviders } from '../services/api';
-import { Invoice, Partner, User } from '../types';
+import { getInvoices, getCompanies, getBrokers } from '../services/api';
+import { Invoice, Company, Broker, User } from '../types';
 
 const formatCurrency = (value: number) => `${new Intl.NumberFormat('fr-FR').format(value)} FCFA`;
 
@@ -11,51 +11,58 @@ interface PartnersProps {
 
 const Partners: React.FC<PartnersProps> = ({ user }) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [partners, setPartners] = useState<Partner[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [brokers, setBrokers] = useState<Broker[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      const [invoicesData, partnersData] = await Promise.all([
+      const [invoicesData, companiesData, brokersData] = await Promise.all([
         getInvoices(),
-        getProviders()
+        getCompanies(),
+        getBrokers()
       ]);
       setInvoices(invoicesData);
-      setPartners(partnersData);
+      setCompanies(companiesData);
+      setBrokers(brokersData);
       setLoading(false);
     };
     fetchData();
   }, [user]);
 
   const partnerStats = useMemo(() => {
-    const statsMap = new Map<string, { totalInvoiced: number; totalPaid: number; totalRejected: number; outstanding: number }>();
+    const statsMap = new Map<string, { name: string; type: 'Compagnie' | 'Courtier'; totalInvoiced: number; totalPaid: number; totalRejected: number; outstanding: number }>();
+    const allPartners = [...companies.map(c => ({...c, type: 'Compagnie' as const})), ...brokers.map(b => ({...b, type: 'Courtier' as const}))];
+    
+    const partnerIdToNameMap = new Map(allPartners.map(p => [p.id, p.name]));
 
     invoices.forEach(invoice => {
-      let stats = statsMap.get(invoice.partnerId);
-      if (!stats) {
-        stats = { totalInvoiced: 0, totalPaid: 0, totalRejected: 0, outstanding: 0 };
+      const companyId = invoice.companyId;
+      if(companyId && partnerIdToNameMap.has(companyId)) {
+        let stats = statsMap.get(companyId);
+        if (!stats) {
+          stats = { name: partnerIdToNameMap.get(companyId)!, type: 'Compagnie', totalInvoiced: 0, totalPaid: 0, totalRejected: 0, outstanding: 0 };
+        }
+        const paid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
+        const rejected = invoice.rejections.reduce((sum, r) => sum + r.amount, 0);
+        stats.totalInvoiced += invoice.totalAmount;
+        stats.totalPaid += paid;
+        stats.totalRejected += rejected;
+        statsMap.set(companyId, stats);
       }
-      const paid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
-      const rejected = invoice.rejections.reduce((sum, r) => sum + r.amount, 0);
-
-      stats.totalInvoiced += invoice.totalAmount;
-      stats.totalPaid += paid;
-      stats.totalRejected += rejected;
-      
-      statsMap.set(invoice.partnerId, stats);
     });
 
     statsMap.forEach((stats) => {
         stats.outstanding = stats.totalInvoiced - stats.totalPaid - stats.totalRejected;
     });
 
-    return partners.map(partner => ({
-        ...partner,
-        stats: statsMap.get(partner.id) || { totalInvoiced: 0, totalPaid: 0, totalRejected: 0, outstanding: 0 }
-    })).filter(p => p.stats.totalInvoiced > 0); // Only show partners with invoices for the current user
-  }, [invoices, partners]);
+    return Array.from(statsMap.entries()).map(([id, data]) => ({
+        id,
+        ...data
+    })).filter(p => p.totalInvoiced > 0);
+  }, [invoices, companies, brokers]);
   
   const filteredPartners = useMemo(() => {
       return partnerStats.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -94,11 +101,11 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
             <tbody>
               {filteredPartners.map(p => (
                 <tr key={p.id} className="border-b hover:bg-slate-50">
-                  <td className="p-4 font-medium">{p.name}</td>
-                  <td className="p-4 text-slate-600 text-right font-mono">{formatCurrency(p.stats.totalInvoiced)}</td>
-                  <td className="p-4 text-green-600 text-right font-mono">{formatCurrency(p.stats.totalPaid)}</td>
-                  <td className="p-4 text-red-600 text-right font-mono">{formatCurrency(p.stats.totalRejected)}</td>
-                  <td className="p-4 text-orange-600 text-right font-mono">{formatCurrency(p.stats.outstanding)}</td>
+                  <td className="p-4 font-medium">{p.name} <span className="text-xs text-slate-500">({p.type})</span></td>
+                  <td className="p-4 text-slate-600 text-right font-mono">{formatCurrency(p.totalInvoiced)}</td>
+                  <td className="p-4 text-green-600 text-right font-mono">{formatCurrency(p.totalPaid)}</td>
+                  <td className="p-4 text-red-600 text-right font-mono">{formatCurrency(p.totalRejected)}</td>
+                  <td className="p-4 text-orange-600 text-right font-mono">{formatCurrency(p.outstanding)}</td>
                 </tr>
               ))}
                {filteredPartners.length === 0 && (

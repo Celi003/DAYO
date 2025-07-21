@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from celery.schedules import crontab
 from datetime import timedelta
@@ -152,12 +153,19 @@ AUTH_PASSWORD_VALIDATORS = [
 
 
 # Email Configuration (example using Gmail SMTP)
+# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# EMAIL_HOST = 'smtp.gmail.com'
+# EMAIL_PORT = 587
+# EMAIL_USE_TLS = True
+# EMAIL_HOST_USER = 'celibertaizonou22@gmail.com'
+# EMAIL_HOST_PASSWORD = 'qdhx fwek oqrf bkpa'
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'celibertaizonou22@gmail.com'
-EMAIL_HOST_PASSWORD = 'qdhx fwek oqrf bkpa'
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')  # Par défaut Gmail
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'celibertaizonou22@gmail.com')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'qdhx fwek oqrf bkpa')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 
 # Celery Configuration
 CELERY_BROKER_URL = 'redis://localhost:6379/0'

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { getUsers, updateUser } from '../services/api';
+import { getUsers, updateUser, activateProviderAccount } from '../services/api';
 import { User } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { useNotification } from '../components/NotificationContext';
@@ -25,7 +25,12 @@ const ALL_PERMISSIONS = [
   'can_manage_entities',
 ];
 
-const Admin: React.FC = () => {
+interface AdminProps {
+  subadminMode?: boolean;
+  user?: User;
+}
+
+const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -34,17 +39,34 @@ const Admin: React.FC = () => {
     const { call } = useApi();
     const [showCreateSubadmin, setShowCreateSubadmin] = useState(false);
     const [newSubadmin, setNewSubadmin] = useState<{username: string; password: string; permissions: string[]}>({username: '', password: '', permissions: []});
+    const [activationUserId, setActivationUserId] = useState<string | null>(null);
+    const [activationDuration, setActivationDuration] = useState<string>('1_MONTH');
 
-    const fetchUsers = useCallback(async () => {
+    // Définir fetchUsers hors du useCallback
+    const fetchUsers = async () => {
         setLoading(true);
-        const usersData = await call(() => getUsers());
-        if (usersData) setUsers(usersData);
+        try {
+            let usersData = await call(() => getUsers());
+            if (Array.isArray(usersData)) {
+              if (subadminMode && subadminUser) {
+                // Filtrer pour ne montrer que les utilisateurs gérables par le subadmin
+                usersData = usersData.filter(u => u.role !== 'admin' && u.id !== subadminUser.id);
+              }
+              setUsers(usersData);
+            }
+            else setUsers([]);
+        } catch (e: any) {
+            notify(e.message || "Erreur lors du chargement des utilisateurs", "error");
+            setUsers([]);
+        } finally {
             setLoading(false);
-    }, [call]);
+        }
+    };
 
     useEffect(() => {
         fetchUsers();
-    }, [fetchUsers]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [subadminMode, subadminUser]);
 
     const handleToggleActive = async (user: User) => {
         await call(() => updateUser(user.id, { isActive: !user.isActive }), 'Statut utilisateur mis à jour');
@@ -99,6 +121,12 @@ const Admin: React.FC = () => {
         await fetchUsers();
     };
 
+    const handleActivateProvider = async (userId: string) => {
+        await call(() => activateProviderAccount(userId, activationDuration), 'Compte provider activé');
+        setActivationUserId(null);
+        await fetchUsers();
+    };
+
     if (loading) {
         return <div className="flex items-center justify-center h-full"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-slate-500"></div></div>;
     }
@@ -109,7 +137,7 @@ const Admin: React.FC = () => {
                 <button onClick={() => navigate('/entities')} className="bg-blue-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-700 text-sm">Gestion des entités</button>
                 <button onClick={() => navigate('/payment-details')} className="bg-green-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-green-700 text-sm">Détails des paiements</button>
                 <button onClick={() => navigate('/audit-log')} className="bg-slate-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-slate-700 text-sm">Historique des actions</button>
-                <button onClick={() => setShowCreateSubadmin(true)} className="bg-purple-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-purple-700 text-sm ml-auto">Créer un sous-admin</button>
+                {!subadminMode && <button onClick={() => setShowCreateSubadmin(true)} className="bg-purple-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-purple-700 text-sm ml-auto">Créer un sous-admin</button>}
             </div>
             <h1 className="text-3xl font-bold text-slate-800 mb-8">Administration des utilisateurs</h1>
             
@@ -120,7 +148,7 @@ const Admin: React.FC = () => {
                             <tr>
                                 <th className="p-4 text-sm font-semibold text-slate-600">Nom d'utilisateur</th>
                                 <th className="p-4 text-sm font-semibold text-slate-600">Rôle</th>
-                                <th className="p-4 text-sm font-semibold text-slate-600">Permissions</th>
+                                {!subadminMode && <th className="p-4 text-sm font-semibold text-slate-600">Permissions</th>}
                                 <th className="p-4 text-sm font-semibold text-slate-600">Statut</th>
                                 <th className="p-4 text-sm font-semibold text-slate-600">Fin d'abonnement</th>
                                 <th className="p-4 text-sm font-semibold text-slate-600 text-center">Actions</th>
@@ -131,11 +159,11 @@ const Admin: React.FC = () => {
                                 <tr key={user.id} className="border-b hover:bg-slate-50">
                                     <td className="p-4 font-medium">{user.username}</td>
                                     <td className="p-4 text-slate-600 capitalize">{user.role}</td>
-                                    <td className="p-4 text-xs">
+                                    {!subadminMode && <td className="p-4 text-xs">
                                         {(user.permissions && user.permissions.length > 0)
                                             ? user.permissions.map(p => <span key={p} className="inline-block bg-slate-200 text-slate-700 rounded px-2 py-1 mr-1 mb-1">{p}</span>)
                                             : <span className="text-slate-400">-</span>}
-                                    </td>
+                                    </td>}
                                     <td className="p-4">
                                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{user.isActive ? 'Actif' : 'Inactif'}</span>
                                     </td>
@@ -143,9 +171,27 @@ const Admin: React.FC = () => {
                                         <input type="date" value={user.subscriptionEndDate || ''} onChange={(e) => handleDateChange(user.id, e.target.value)} className="p-1 bg-white border border-slate-300 rounded-md shadow-sm w-40" />
                                     </td>
                                     <td className="p-4 text-center space-x-2">
-                                        <button onClick={() => handleToggleActive(user)} className={`text-xs font-semibold py-1 px-3 rounded-full ${user.isActive ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-green-100 text-green-800 hover:bg-green-200'}`}>{user.isActive ? 'Désactiver' : 'Activer'}</button>
+                                        {user.role === 'provider' ? (
+                                            activationUserId === user.id ? (
+                                                <>
+                                                    <select value={activationDuration} onChange={e => setActivationDuration(e.target.value)} className="text-xs p-1 border rounded mr-2">
+                                                        <option value="1_MONTH">1 mois</option>
+                                                        <option value="3_MONTHS">3 mois</option>
+                                                        <option value="6_MONTHS">6 mois</option>
+                                                        <option value="9_MONTHS">9 mois</option>
+                                                        <option value="1_YEAR">1 an</option>
+                                                    </select>
+                                                    <button onClick={() => handleActivateProvider(user.id)} className="text-xs bg-green-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-green-700">Valider</button>
+                                                    <button onClick={() => setActivationUserId(null)} className="text-xs bg-slate-200 text-slate-800 font-semibold py-1 px-3 rounded-full hover:bg-slate-300 ml-2">Annuler</button>
+                                                </>
+                                            ) : (
+                                                <button onClick={() => setActivationUserId(user.id)} className={`text-xs font-semibold py-1 px-3 rounded-full ${user.isActive ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-green-100 text-green-800 hover:bg-green-200'}`}>{user.isActive ? 'Désactiver' : 'Activer'}</button>
+                                            )
+                                        ) : (
+                                            <button onClick={() => handleToggleActive(user)} className={`text-xs font-semibold py-1 px-3 rounded-full ${user.isActive ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-green-100 text-green-800 hover:bg-green-200'}`}>{user.isActive ? 'Désactiver' : 'Activer'}</button>
+                                        )}
                                         <button onClick={() => handleSaveDate(user)} className="text-xs bg-blue-100 text-blue-800 font-semibold py-1 px-3 rounded-full hover:bg-blue-200">Sauvegarder</button>
-                                        <button onClick={() => handleEditUser(user)} className="text-xs bg-slate-100 text-slate-800 font-semibold py-1 px-3 rounded-full hover:bg-slate-200">Éditer</button>
+                                        {!subadminMode && <button onClick={() => handleEditUser(user)} className="text-xs bg-slate-100 text-slate-800 font-semibold py-1 px-3 rounded-full hover:bg-slate-200">Éditer</button>}
                                     </td>
                                 </tr>
                             ))}

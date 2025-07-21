@@ -46,9 +46,12 @@ class RejectionSerializer(serializers.ModelSerializer):
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
-    provider = serializers.StringRelatedField()
+    provider = serializers.StringRelatedField(read_only=True)
+    provider_id = serializers.PrimaryKeyRelatedField(queryset=Provider.objects.all(), source='provider', write_only=True)
     broker = BrokerSerializer(read_only=True)
+    broker_id = serializers.PrimaryKeyRelatedField(queryset=Broker.objects.all(), source='broker', write_only=True, required=False, allow_null=True)
     company = CompanySerializer(read_only=True)
+    company_id = serializers.PrimaryKeyRelatedField(queryset=Company.objects.all(), source='company', write_only=True)
     payments = PaymentSerializer(many=True, read_only=True)
     rejections = RejectionSerializer(many=True, read_only=True)
     remaining_amount = serializers.SerializerMethodField()
@@ -56,9 +59,13 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Invoice
-        fields = ['id', 'provider', 'broker', 'company', 'invoice_number', 'invoice_month',
-                  'billed_amount', 'paid_amount', 'status', 'payments', 'rejections',
-                  'remaining_amount', 'rejected_amount']
+        fields = [
+            'id', 'provider', 'provider_id', 'broker', 'broker_id', 'company', 'company_id',
+            'invoice_number',
+            'deposit_date',
+            'invoice_month', 'billed_amount', 'paid_amount', 'status',
+            'payments', 'rejections', 'remaining_amount', 'rejected_amount'
+        ]
 
     def get_remaining_amount(self, obj):
         return obj.remaining_amount()
