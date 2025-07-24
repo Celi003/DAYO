@@ -40,7 +40,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
   } = useRegistrations(selectedYear);
 
   return (
-    <div className="min-h-screen">
+    <React.Fragment>
       <div className="mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-8">
           <div>
@@ -144,7 +144,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
           onUpdate={handleUpdateInvoice}
         />
       )}
-    </div>
+    </React.Fragment>
   );
 };
 

@@ -50,7 +50,7 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
                 invoice: invoiceId,
                 amount: parseFloat(paymentAmount),
                 payment_date: paymentDate,
-                payment_method: 'VIREMENT' // ou laisse vide si non utilisé
+                payment_method: 'VIREMENT',
             }), 'Paiement ajouté');
             if (updatedInvoice) {
             onUpdate(updatedInvoice);

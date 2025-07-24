@@ -1,7 +1,20 @@
 import { RegistrationFilters } from "@/hooks/useRegistrations";
 import { Broker, Company, Invoice, User } from "@/types";
-import { formatCurrency, formatDate, getInvoiceStatus, getStatusColor, getStatusText } from "@/utils/helpers";
-import { Bell, ChevronLeft, ChevronRight, Eye, FileText, Search } from "lucide-react";
+import {
+  formatCurrency,
+  formatDate,
+  getInvoiceStatus,
+  getStatusColor,
+  getStatusText,
+} from "@/utils/helpers";
+import {
+  Bell,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  FileText,
+  Search,
+} from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 
 export const InvoiceTable: React.FC<{
@@ -38,7 +51,7 @@ export const InvoiceTable: React.FC<{
   const filtered = useMemo(() => {
     return invoices.filter((inv: Invoice) => {
       const companyMatch =
-        !filters.company || inv.company.id === filters.company;
+        !filters.company || inv.company.name === filters.company;
       const status = getInvoiceStatus(inv).text;
       const statusMatch = !filters.status || status === filters.status;
       const date = inv.deposit_date || "";
@@ -102,7 +115,7 @@ export const InvoiceTable: React.FC<{
         >
           <option value="">Toutes les compagnies</option>
           {companies.map((c: Company) => (
-            <option key={c.id} value={c.id}>
+            <option key={c.id} value={c.name}>
               {c.name}
             </option>
           ))}
@@ -274,8 +287,7 @@ export const InvoiceTable: React.FC<{
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-500">
               Affichage de {(page - 1) * 10 + 1} à{" "}
-              {Math.min(page * 10, sorted.length)} sur{" "}
-              {sorted.length} résultats
+              {Math.min(page * 10, sorted.length)} sur {sorted.length} résultats
             </div>
             <div className="flex items-center gap-2">
               <button

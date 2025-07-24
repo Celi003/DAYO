@@ -2,7 +2,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import Sidebar from './components/Sidebar';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Page, User } from './types';
+import { User } from './types';
 import * as api from './services/api';
 import { NotificationProvider } from './components/NotificationContext';
 
