@@ -39,17 +39,17 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
     const partnerIdToNameMap = new Map(allPartners.map(p => [p.id, p.name]));
 
     invoices.forEach(invoice => {
-      const companyId = invoice.companyId;
+      const companyId = invoice.company.id;
       if(companyId && partnerIdToNameMap.has(companyId)) {
         let stats = statsMap.get(companyId);
         if (!stats) {
           stats = { name: partnerIdToNameMap.get(companyId)!, type: 'Compagnie', totalInvoiced: 0, totalPaid: 0, totalRejected: 0, outstanding: 0 };
         }
-        const paid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
-        const rejected = invoice.rejections.reduce((sum, r) => sum + r.amount, 0);
-        stats.totalInvoiced += invoice.totalAmount;
-        stats.totalPaid += paid;
-        stats.totalRejected += rejected;
+        const paid = invoice.payments?.reduce((sum, p) => sum + p.amount, 0);
+        const rejected = invoice.rejections?.reduce((sum, r) => sum + r.rejected_amount, 0);
+        stats.totalInvoiced += invoice.billed_amount;
+        stats.totalPaid += paid || 0;
+        stats.totalRejected += rejected || 0;
         statsMap.set(companyId, stats);
       }
     });

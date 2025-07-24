@@ -69,7 +69,7 @@ const App: React.FC = () => {
   
   const isSubscriptionExpired = currentUser.role === 'provider' && currentUser.subscriptionEndDate && new Date(currentUser.subscriptionEndDate) < new Date();
 
-  if (!currentUser.isActive) {
+  if (!currentUser.is_active) {
      return (
         <div className="flex flex-col items-center justify-center h-screen bg-slate-100 text-center p-4">
             <h1 className="text-2xl font-bold text-red-600 mb-4">Accès refusé</h1>

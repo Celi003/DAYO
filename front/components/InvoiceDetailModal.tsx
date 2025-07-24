@@ -3,13 +3,8 @@ import React, { useState, useMemo } from 'react';
 import { Invoice, Company, Broker } from '../types';
 import { addPayment, addRejection, generateReclamationLetter } from '../services/api';
 import Modal from './Modal';
-import { useNotification } from './NotificationContext';
 import { useApi } from '../services/api';
-
-const formatCurrency = (value: number) => `${new Intl.NumberFormat('fr-FR').format(value)} FCFA`;
-const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-};
+import { formatCurrency } from '../utils/helpers';
 
 interface InvoiceDetailModalProps {
     invoice: Invoice;
@@ -28,7 +23,6 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
     const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
     const [isSubmittingRejection, setIsSubmittingRejection] = useState(false);
     const [errors, setErrors] = useState<{[key:string]:string}>({});
-    const { notify } = useNotification();
     const { call } = useApi();
 
     const validatePayment = () => {
@@ -152,9 +146,9 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
 const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, company, broker, onClose, onUpdate }) => {
     
     const stats = useMemo(() => {
-        const totalPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
-        const totalRejected = invoice.rejections.reduce((sum, r) => sum + r.amount, 0);
-        const outstanding = invoice.totalAmount - totalPaid - totalRejected;
+        const totalPaid = invoice.payments!.reduce((sum, p) => sum + p.amount, 0);
+        const totalRejected = invoice.rejections!.reduce((sum, r) => sum + r.rejected_amount, 0);
+        const outstanding = invoice.billed_amount - totalPaid - totalRejected;
         return { totalPaid, totalRejected, outstanding };
     }, [invoice]);
 
@@ -191,13 +185,13 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
                 }
                  <div className="flex justify-between items-center mb-4">
                     <p className="text-slate-600">Mois de la facture:</p>
-                    <p className="font-semibold">{invoice.invoiceMonth}</p>
+                    <p className="font-semibold">{invoice.invoice_month}</p>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                     <div>
                         <p className="text-sm text-slate-500">Total Facturé</p>
-                        <p className="text-xl font-bold text-slate-800">{formatCurrency(invoice.totalAmount)}</p>
+                        <p className="text-xl font-bold text-slate-800">{formatCurrency(invoice.billed_amount)}</p>
                     </div>
                     <div>
                         <p className="text-sm text-slate-500">Total Payé</p>
@@ -215,7 +209,7 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
             </div>
 
             {/* Transactions */}
-            <TransactionForm invoiceId={invoice.id} onUpdate={onUpdate} isSettled={stats.totalPaid + stats.totalRejected >= invoice.totalAmount} />
+            <TransactionForm invoiceId={invoice.id} onUpdate={onUpdate} isSettled={stats.totalPaid + stats.totalRejected >= invoice.billed_amount} />
 
             <div className="mt-6">
                 <button onClick={handleGenerateLetter} className="bg-orange-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-orange-700 text-sm">
@@ -224,7 +218,6 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
                 {isLoadingLetter && <div className="mt-2 text-slate-500">Génération en cours...</div>}
                 {reclamationLetter && <pre className="mt-2 bg-slate-100 p-4 rounded text-sm whitespace-pre-wrap">{reclamationLetter}</pre>}
             </div>
-
         </Modal>
     );
 };

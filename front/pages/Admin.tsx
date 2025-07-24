@@ -69,7 +69,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
     }, [subadminMode, subadminUser]);
 
     const handleToggleActive = async (user: User) => {
-        await call(() => updateUser(user.id, { isActive: !user.isActive }), 'Statut utilisateur mis à jour');
+        await call(() => updateUser(user.id, { isActive: !user.is_active }), 'Statut utilisateur mis à jour');
             await fetchUsers();
     };
 
@@ -165,7 +165,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                                             : <span className="text-slate-400">-</span>}
                                     </td>}
                                     <td className="p-4">
-                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{user.isActive ? 'Actif' : 'Inactif'}</span>
+                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{user.is_active ? 'Actif' : 'Inactif'}</span>
                                     </td>
                                     <td className="p-4 text-slate-600">
                                         <input type="date" value={user.subscriptionEndDate || ''} onChange={(e) => handleDateChange(user.id, e.target.value)} className="p-1 bg-white border border-slate-300 rounded-md shadow-sm w-40" />
@@ -185,10 +185,10 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                                                     <button onClick={() => setActivationUserId(null)} className="text-xs bg-slate-200 text-slate-800 font-semibold py-1 px-3 rounded-full hover:bg-slate-300 ml-2">Annuler</button>
                                                 </>
                                             ) : (
-                                                <button onClick={() => setActivationUserId(user.id)} className={`text-xs font-semibold py-1 px-3 rounded-full ${user.isActive ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-green-100 text-green-800 hover:bg-green-200'}`}>{user.isActive ? 'Désactiver' : 'Activer'}</button>
+                                                <button onClick={() => setActivationUserId(user.id)} className={`text-xs font-semibold py-1 px-3 rounded-full ${user.is_active ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-green-100 text-green-800 hover:bg-green-200'}`}>{user.is_active ? 'Désactiver' : 'Activer'}</button>
                                             )
                                         ) : (
-                                            <button onClick={() => handleToggleActive(user)} className={`text-xs font-semibold py-1 px-3 rounded-full ${user.isActive ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-green-100 text-green-800 hover:bg-green-200'}`}>{user.isActive ? 'Désactiver' : 'Activer'}</button>
+                                            <button onClick={() => handleToggleActive(user)} className={`text-xs font-semibold py-1 px-3 rounded-full ${user.is_active ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-green-100 text-green-800 hover:bg-green-200'}`}>{user.is_active ? 'Désactiver' : 'Activer'}</button>
                                         )}
                                         <button onClick={() => handleSaveDate(user)} className="text-xs bg-blue-100 text-blue-800 font-semibold py-1 px-3 rounded-full hover:bg-blue-200">Sauvegarder</button>
                                         {!subadminMode && <button onClick={() => handleEditUser(user)} className="text-xs bg-slate-100 text-slate-800 font-semibold py-1 px-3 rounded-full hover:bg-slate-200">Éditer</button>}

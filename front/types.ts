@@ -2,17 +2,31 @@
 export interface User {
   id: string;
   username: string;
-  password?: string; // Password should not be sent to the client, but is needed for mock login
-  role: 'admin' | 'provider' | 'subadmin' | 'broker' | 'company';
-  isActive: boolean;
-  subscriptionEndDate: string | null; // YYYY-MM-DD
-  permissions?: string[]; // ex: ['can_edit_invoice', 'can_view_payments']
+  email?: string;
+  role: "admin" | "provider" | "subadmin" | "broker" | "company";
+  is_active: boolean;
+  permissions?: string[];
+  subscriptionEndDate?: string;
+  subscription_status?: "active" | "inactive" | "expired";
+  subscription_expiry?: string;
+}
+
+
+export interface Partner {
+  id: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  type: "provider" | "broker" | "company";
+  company_id?: string; // For brokers
 }
 
 export interface Company {
   id: string;
   name: string;
-  address: string;
+  broker?: Broker;
+  contact_email: string;
 }
 
 export interface Broker {
@@ -23,27 +37,40 @@ export interface Broker {
 
 export interface Invoice {
   id: string;
-  providerId: string; // The ID of the provider this invoice belongs to
-  companyId: string;
-  brokerId: string | null;
-  depositDate?: string;
-  invoiceMonth: string; // e.g., "Janvier 2025"
-  totalAmount: number;
-  payments: Payment[];
-  rejections: Rejection[];
+  deposit_date: string;
+  invoice_number: string;
+  paid_amount: string;
+  status: "PAID" | "UNPAID" | "PARTIALLY_PAID" | "REJECTED";
+  remaining_amount: string;
+  rejected_amount: string;
+  invoice_month: string; 
+  billed_amount: number;
+  provider: Provider;
+  company: Company;
+  broker?: Broker | null;
+  payments?: Payment[];
+  rejections?: Rejection[];
+}
+
+export interface Provider extends Pick<User, "subscription_expiry" | "subscription_status"> {
+  id: string;
+  user: User;
+  name: string;
 }
 
 export interface Payment {
   id: string;
   amount: number;
-  date: string;
+  payment_date: string;
+  invoice: number;
+  payment_method?: string;
 }
 
 export interface Rejection {
   id: string;
-  amount: number;
-  reason: string;
-  date: string;
+  rejected_amount: number;
+  rejection_reason: string;
+  rejection_date: string;
 }
 
 export interface Notification {
@@ -57,4 +84,17 @@ export interface Notification {
   payment?: number | null;
 }
 
+export type TransactionType = "Paiement" | "Rejet";
+export interface Transaction {
+  id: string;
+  date: string;
+  partnerId?: string;
+  partnerName: string;
+  invoiceMonth: string;
+  status: string;
+  type: TransactionType;
+  amount: number;
+  reason?: string;
+  providerName?: string;
+}
 export type Page = 'dashboard' | 'registrations' | 'payments' | 'partners' | 'admin' | 'notifications';

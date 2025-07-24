@@ -4,10 +4,10 @@ from .models import *
 
 class UserProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
-
+    permissions = serializers.ListField(child=serializers.CharField(), source='user.get_all_permissions', read_only=True)
     class Meta:
         model = UserProfile
-        fields = ['id', 'username', 'role', 'is_active', 'subscription_status', 'subscription_expiry', 'email']
+        fields = ['id', 'username', 'role', 'is_active', 'subscription_status', 'subscription_expiry', 'email', 'permissions']
 
 
 class ProviderSerializer(serializers.ModelSerializer):
@@ -46,7 +46,7 @@ class RejectionSerializer(serializers.ModelSerializer):
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
-    provider = serializers.StringRelatedField(read_only=True)
+    provider = ProviderSerializer(read_only=True)
     provider_id = serializers.PrimaryKeyRelatedField(queryset=Provider.objects.all(), source='provider', write_only=True)
     broker = BrokerSerializer(read_only=True)
     broker_id = serializers.PrimaryKeyRelatedField(queryset=Broker.objects.all(), source='broker', write_only=True, required=False, allow_null=True)
