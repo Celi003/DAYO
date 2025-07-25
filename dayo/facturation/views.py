@@ -76,6 +76,7 @@ class RegisterView(APIView):
         user = User.objects.create_user(username=username, password=password, email=email)
         UserProfile.objects.create(
             user=user,
+            username=username,  # Synchroniser le username avec le User Django
             role='PROVIDER',  # Default to PROVIDER; adjust if needed
             email=email
         )
@@ -147,6 +148,8 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         profile.is_active = True
         profile.subscription_expiry = expiry
         profile.subscription_status = 'ACTIVE'
+        # S'assurer que le username est synchronisé avec le User Django
+        profile.username = profile.user.username
         profile.save()
 
         # Création du Provider si inexistant
