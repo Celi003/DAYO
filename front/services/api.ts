@@ -77,7 +77,7 @@ export const getCurrentUser = async () => {
   return {
     ...users[0],
     role: users[0].role ? users[0].role.toLowerCase() : undefined,
-    isActive: users[0].is_active // mapping
+    is_active: users[0].is_active // Fix: keep the original property name
   };
 };
 
@@ -97,7 +97,7 @@ export const getUsers = async () => {
   return users.map((u: any) => ({
     ...u,
     role: u.role ? u.role.toLowerCase() : undefined,
-    isActive: u.is_active // mapping
+    is_active: u.is_active // Fix: keep the original property name
   }));
 };
 

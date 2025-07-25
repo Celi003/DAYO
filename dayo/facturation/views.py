@@ -38,7 +38,7 @@ class LoginView(APIView):
             return Response({
                 'token': token.key,
                 'role': profile.role,
-                'isActive': profile.is_active,
+                'is_active': profile.is_active,
                 'subscriptionEndDate': profile.subscription_expiry.isoformat() if profile.subscription_expiry else None,
                 'username': user.username,
                 'id': str(profile.id)
