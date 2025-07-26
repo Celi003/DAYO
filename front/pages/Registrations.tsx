@@ -16,6 +16,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
   user,
   selectedYear = new Date().getFullYear(),
 }) => {
+
   const {
     invoices,
     invoiceForDetails,
@@ -40,9 +41,10 @@ const Registrations: React.FC<RegistrationsProps> = ({
     resetFilters,
   } = useRegistrations(selectedYear);
 
+  const partnerId = partners.find((p) => p.user.id === user.id)?.id ?? null;
   useEffect(() => {
-    console.log("Registrations component mounted", { user, partners});
-  })
+    console.log("Registrations component mounted", { user, partners, partnerId });
+  }, [user, partners]);
   return (
     <React.Fragment>
       <div className="mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -98,7 +100,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
         <AddInvoiceForm
           companies={companies}
           brokers={brokers}
-          providerId={partners.find(p => p.user.id === user.id)?.id || 0}
+          providerId={partnerId}
           onAddInvoice={handleAddInvoice}
           user={user}
         />
