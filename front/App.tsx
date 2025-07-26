@@ -93,16 +93,90 @@ const App: React.FC = () => {
   return (
     <NotificationProvider>
       <Router>
-        <Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-100"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-slate-500"></div></div>}>
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center h-screen bg-slate-100">
+              <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-slate-500"></div>
+            </div>
+          }
+        >
           <Routes>
-            <Route path="/" element={<Layout><Dashboard user={currentUser} /></Layout>} />
-            <Route path="/notifications" element={<Layout><Notifications /></Layout>} />
-            <Route path="/registrations" element={<Layout><Registrations user={currentUser} /></Layout>} />
-            <Route path="/payments" element={<Layout><Payments user={currentUser} /></Layout>} />
-            <Route path="/partners" element={<Layout><Partners user={currentUser} /></Layout>} />
-            <Route path="/entities" element={<Layout><Entities /></Layout>} />
-            <Route path="/payment-details" element={<Layout><PaymentDetails /></Layout>} />
-            <Route path="/audit-log" element={<Layout><AuditLog /></Layout>} />
+            <Route
+              path="/"
+              element={
+                <Layout>
+                  <Dashboard user={currentUser} />
+                </Layout>
+              }
+            />
+            <Route
+              path="/notifications"
+              element={
+                <Layout>
+                  <Notifications />
+                </Layout>
+              }
+            />
+            <Route
+              path="/registrations"
+              element={
+                <Layout>
+                  <Registrations user={currentUser} />
+                </Layout>
+              }
+            />
+            <Route
+              path="/payments"
+              element={
+                <Layout>
+                  <Payments user={currentUser} />
+                </Layout>
+              }
+            />
+            <Route
+              path="/partners"
+              element={
+                <Layout>
+                  <Partners user={currentUser} />
+                </Layout>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <Layout>
+                  {currentUser.role === "admin" ? (
+                    <Admin />
+                  ) : (
+                    <Dashboard user={currentUser} />
+                  )}
+                </Layout>
+              }
+            />
+            <Route
+              path="/entities"
+              element={
+                <Layout>
+                  <Entities />
+                </Layout>
+              }
+            />
+            <Route
+              path="/payment-details"
+              element={
+                <Layout>
+                  <PaymentDetails />
+                </Layout>
+              }
+            />
+            <Route
+              path="/audit-log"
+              element={
+                <Layout>
+                  <AuditLog />
+                </Layout>
+              }
+            />
             {/* Garder les routes sans layout pour login/signup si nécessaire */}
           </Routes>
         </Suspense>
