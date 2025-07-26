@@ -76,6 +76,7 @@ class RegisterView(APIView):
         user = User.objects.create_user(username=username, password=password, email=email)
         UserProfile.objects.create(
             user=user,
+            username=username,
             role='PROVIDER',  # Default to PROVIDER; adjust if needed
             email=email
         )
@@ -104,7 +105,7 @@ class RegisterView(APIView):
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAuthenticated, IsAdminOrActiveProvider]
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -153,6 +154,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         profile.is_active = True
         profile.subscription_expiry = expiry
         profile.subscription_status = 'ACTIVE'
+        profile.username = profile.user.username
         profile.save()
 
         # Création du Provider si inexistant
