@@ -88,7 +88,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
 
   const handleToggleActive = async (user: User) => {
     await call(
-      () => updateUser(user.id, { isActive: !user.is_active }),
+      () => updateUser(user.id, { isActive: !user.isActive }),
       "Statut utilisateur mis à jour"
     );
     await fetchUsers();
@@ -269,12 +269,12 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                   <td className="p-4">
                     <span
                       className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.is_active
+                        user.isActive
                           ? "bg-green-100 text-green-800"
                           : "bg-red-100 text-red-800"
                       }`}
                     >
-                      {user.is_active ? "Actif" : "Inactif"}
+                      {user.isActive ? "Actif" : "Inactif"}
                     </span>
                   </td>
                   <td className="p-4 text-slate-600">
@@ -321,24 +321,24 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                         <button
                           onClick={() => setActivationUserId(user.id)}
                           className={`text-xs font-semibold py-1 px-3 rounded-full ${
-                            user.is_active
+                            user.isActive
                               ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
                               : "bg-green-100 text-green-800 hover:bg-green-200"
                           }`}
                         >
-                          {user.is_active ? "Désactiver" : "Activer"}
+                          {user.isActive ? "Désactiver" : "Activer"}
                         </button>
                       )
                     ) : (
                       <button
                         onClick={() => handleToggleActive(user)}
                         className={`text-xs font-semibold py-1 px-3 rounded-full ${
-                          user.is_active
+                          user.isActive
                             ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
                             : "bg-green-100 text-green-800 hover:bg-green-200"
                         }`}
                       >
-                        {user.is_active ? "Désactiver" : "Activer"}
+                        {user.isActive ? "Désactiver" : "Activer"}
                       </button>
                     )}
                     <button

@@ -34,6 +34,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onGoToSignup }) => {
     setError(null);
     try {
       const user = await call(() => api.login(username, password));
+      console.log('User logged in:', user);
       if (user) {
         onLogin(user);
       }

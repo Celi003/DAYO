@@ -4,7 +4,7 @@ export interface User {
   username: string;
   email?: string;
   role: "admin" | "provider" | "subadmin" | "broker" | "company";
-  is_active: boolean;
+  isActive: boolean;
   permissions?: string[];
   subscriptionEndDate?: string;
   subscription_status?: "active" | "inactive" | "expired";
