@@ -133,6 +133,12 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         )
         instance.delete()
 
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def me(self, request):
+        profile = request.user.userprofile
+        serializer = self.get_serializer(profile)
+        return Response(serializer.data)
+    
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def activate_account(self, request, pk=None):
         profile = self.get_object()

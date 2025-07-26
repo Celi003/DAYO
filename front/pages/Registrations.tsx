@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { User } from "../types";
 import InvoiceDetailModal from "../components/InvoiceDetailModal";
 import useRegistrations from "@/hooks/useRegistrations";
@@ -31,6 +31,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
     invoiceForReminder,
     setInvoiceForReminder,
     search,
+    partners,
     filters,
     handleFilterChange,
     loading,
@@ -39,6 +40,9 @@ const Registrations: React.FC<RegistrationsProps> = ({
     resetFilters,
   } = useRegistrations(selectedYear);
 
+  useEffect(() => {
+    console.log("Registrations component mounted", { user, partners});
+  })
   return (
     <React.Fragment>
       <div className="mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -94,7 +98,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
         <AddInvoiceForm
           companies={companies}
           brokers={brokers}
-          providerId={user.id}
+          providerId={partners.find(p => p.user.id === user.id)?.id || 0}
           onAddInvoice={handleAddInvoice}
           user={user}
         />

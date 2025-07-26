@@ -4,7 +4,7 @@ import React from "react";
 
 const RevenueDetailsModalContent: React.FC<{
   data: Invoice[];
-  partnerMap: Map<string, string>;
+  partnerMap: Map<number, string>;
 }> = ({ data, partnerMap }) => {
   return (
     <table className="w-full text-left">

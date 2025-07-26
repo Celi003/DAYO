@@ -14,7 +14,7 @@ interface InvoiceDetailModalProps {
     onUpdate: (updatedInvoice: Invoice) => void;
 }
 
-const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: Invoice) => void; isSettled?: boolean }> = ({ invoiceId, onUpdate, isSettled }) => {
+const TransactionForm: React.FC<{ invoiceId: number; onUpdate: (updatedInvoice: Invoice) => void; isSettled?: boolean }> = ({ invoiceId, onUpdate, isSettled }) => {
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
     const [rejectionAmount, setRejectionAmount] = useState('');
@@ -46,13 +46,13 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
         if (!validatePayment()) return;
         setIsSubmittingPayment(true);
         try {
-            const updatedInvoice = await call(() => addPayment(invoiceId, {
+            const updatedInvoice = await call(() => addPayment(String(invoiceId), {
                 invoice: invoiceId,
                 amount: parseFloat(paymentAmount),
                 payment_date: paymentDate,
                 payment_method: 'VIREMENT',
             }), 'Paiement ajouté');
-            if (updatedInvoice) {
+            if (updatedInvoice) {   
             onUpdate(updatedInvoice);
             setPaymentAmount('');
                 setErrors({});
@@ -67,7 +67,7 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
         if (!validateRejection()) return;
         setIsSubmittingRejection(true);
         try {
-            const updatedInvoice = await call(() => addRejection(invoiceId, {
+            const updatedInvoice = await call(() => addRejection(String(invoiceId), {
                 invoice: invoiceId,
                 rejected_amount: parseFloat(rejectionAmount),
                 rejection_reason: rejectionReason,
@@ -160,7 +160,7 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
         setIsLoadingLetter(true);
         setReclamationLetter(null);
         try {
-            const data = await generateReclamationLetter(invoice.id);
+            const data = await generateReclamationLetter(String(invoice.id));
             setReclamationLetter(data.letter);
         } catch (e: any) {
             setReclamationLetter(e.message || 'Erreur lors de la génération de la lettre.');

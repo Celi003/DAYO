@@ -1,6 +1,6 @@
 
 export interface User {
-  id: string;
+  id: number;
   username: string;
   email?: string;
   role: "admin" | "provider" | "subadmin" | "broker" | "company";
@@ -13,30 +13,30 @@ export interface User {
 
 
 export interface Partner {
-  id: string;
+  id: number;
   name: string;
   address?: string;
   phone?: string;
   email?: string;
   type: "provider" | "broker" | "company";
-  company_id?: string; // For brokers
+  company_id?: number; // For brokers
 }
 
 export interface Company {
-  id: string;
+  id: number;
   name: string;
   broker?: Broker;
   contact_email: string;
 }
 
 export interface Broker {
-  id: string;
+  id: number;
   name: string;
-  companyId?: string;
+  companyId?: number;
 }
 
 export interface Invoice {
-  id: string;
+  id: number;
   deposit_date: string;
   invoice_number: string;
   paid_amount: string;
@@ -53,13 +53,13 @@ export interface Invoice {
 }
 
 export interface Provider extends Pick<User, "subscription_expiry" | "subscription_status"> {
-  id: string;
+  id: number;
   user: User;
   name: string;
 }
 
 export interface Payment {
-  id: string;
+  id: number;
   amount: number;
   payment_date: string;
   invoice: number;
@@ -67,7 +67,7 @@ export interface Payment {
 }
 
 export interface Rejection {
-  id: string;
+  id: number;
   rejected_amount: number;
   rejection_reason: string;
   rejection_date: string;
@@ -88,7 +88,7 @@ export type TransactionType = "Paiement" | "Rejet";
 export interface Transaction {
   id: string;
   date: string;
-  partnerId?: string;
+  partnerId?: number;
   partnerName: string;
   invoiceMonth: string;
   status: string;

@@ -68,16 +68,21 @@ export const logout = () => {
 };
 
 export const getCurrentUser = async () => {
-  if (!authToken && !sessionStorage.getItem('authToken')) return null;
-  const res = await fetch(`${API_BASE}/users/`, { headers: getHeaders() });
-  if (!res.ok) return null;
-  if (!isJsonResponse(res)) return null;
-  const users = await res.json();
-  if (!users[0]) return null;
+  if (!authToken && !sessionStorage.getItem("authToken")) return null;
+
+  const res = await fetch(`${API_BASE}/users/me/`, {
+    headers: getHeaders(),
+  });
+
+  if (!res.ok || !isJsonResponse(res)) return null;
+
+  const data = await res.json();
+
+  console.log('Current user data:', data);
   return {
-    ...users[0],
-    role: users[0].role ? users[0].role.toLowerCase() : undefined,
-    isActive: users[0].is_active // mapping
+    ...data,
+    role: data.role ? data.role.toLowerCase() : undefined,
+    isActive: data.is_active,
   };
 };
 
@@ -178,7 +183,10 @@ export const addInvoice = async (invoiceData: any) => {
     headers: getHeaders(),
     body: JSON.stringify(invoiceData)
   });
-  if (!res.ok) throw new Error('Erreur lors de la création de la facture');
+  if (!res.ok) {
+    console.log(await res.text());
+    throw new Error('Erreur lors de la création de la facture');
+  }
   const inv = await res.json();
   return {
     ...inv,

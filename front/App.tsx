@@ -100,7 +100,6 @@ const App: React.FC = () => {
             <Route path="/registrations" element={<Layout><Registrations user={currentUser} /></Layout>} />
             <Route path="/payments" element={<Layout><Payments user={currentUser} /></Layout>} />
             <Route path="/partners" element={<Layout><Partners user={currentUser} /></Layout>} />
-            <Route path="/admin" element={<Layout>{currentUser.role === 'admin' ? <Admin /> : <Dashboard user={currentUser} />}</Layout>} />
             <Route path="/entities" element={<Layout><Entities /></Layout>} />
             <Route path="/payment-details" element={<Layout><PaymentDetails /></Layout>} />
             <Route path="/audit-log" element={<Layout><AuditLog /></Layout>} />

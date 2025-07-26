@@ -81,12 +81,16 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
 
     invoices.forEach((invoice: Invoice) => {
       const isCompany = !!invoice.company?.id;
-      const partnerId = isCompany
-        ? invoice.company.id
-        : invoice.broker?.id || "";
+      const partnerId: number | undefined = isCompany
+        ? invoice.company?.id
+        : invoice.broker?.id;
       const partnerName = isCompany
-        ? (companyMap.get(partnerId) as Company).name || "Inconnu"
-        : (brokerMap.get(partnerId) as Broker).name?.toLowerCase() || "Inconnu";
+        ? typeof partnerId === "number"
+          ? (companyMap.get(partnerId) as Company)?.name || "Inconnu"
+          : "Inconnu"
+        : typeof partnerId === "number"
+          ? (brokerMap.get(partnerId) as Broker)?.name?.toLowerCase() || "Inconnu"
+          : "Inconnu";
 
       invoice.payments?.forEach((payment) => {
         console.log("Adding payment transaction", {

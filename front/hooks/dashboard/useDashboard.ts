@@ -23,7 +23,7 @@ export function useDashboard(
     },
     partner: {
       value: filterPartner,
-      predicate: (inv: Invoice, partnerId: string) =>
+      predicate: (inv: Invoice, partnerId: number) =>
         partnerId ? inv.provider.id === partnerId : true,
     },
     status: {
@@ -57,7 +57,7 @@ export function useDashboard(
   }, [invoices]);
 
   const partnerMap = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<number, string>();
     partners.forEach((partner) => {
       map.set(partner.id, partner.name);
     });

@@ -27,6 +27,7 @@ export default function useRegistrations(selectedYear: number) {
     loading,
     companyMap,
     brokerMap,
+    partners,
   } = useBillingData(selectedYear);
   const { call } = useApi();
 
@@ -169,6 +170,7 @@ export default function useRegistrations(selectedYear: number) {
     invoiceForDetails,
     setInvoiceForDetails,
     search,
+    partners,
     setSearch,
     filters,
     setFilters,

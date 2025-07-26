@@ -33,7 +33,7 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
   }, [user]);
 
   const partnerStats = useMemo(() => {
-    const statsMap = new Map<string, { name: string; type: 'Compagnie' | 'Courtier'; totalInvoiced: number; totalPaid: number; totalRejected: number; outstanding: number }>();
+    const statsMap = new Map<number, { name: string; type: 'Compagnie' | 'Courtier'; totalInvoiced: number; totalPaid: number; totalRejected: number; outstanding: number }>();
     const allPartners = [...companies.map(c => ({...c, type: 'Compagnie' as const})), ...brokers.map(b => ({...b, type: 'Courtier' as const}))];
     
     const partnerIdToNameMap = new Map(allPartners.map(p => [p.id, p.name]));

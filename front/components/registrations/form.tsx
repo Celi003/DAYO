@@ -6,12 +6,12 @@ import { useNotification } from "../NotificationContext";
 export const AddInvoiceForm: React.FC<{
   companies: Company[];
   brokers: Broker[];
-  providerId: string | null;
+  providerId: number | null;
   onAddInvoice: (invoice: Invoice) => void;
   user: User;
 }> = ({ companies, brokers, providerId, onAddInvoice }) => {
-  const [companyId, setCompanyId] = useState("");
-  const [brokerId, setBrokerId] = useState<string | null>(null);
+  const [companyId, setCompanyId] = useState<number | null>(null);
+  const [brokerId, setBrokerId] = useState<number | null>(null);
   const [invoiceMonth, setInvoiceMonth] = useState("");
   const [depositDate, setDepositDate] = useState("");
   const [amount, setAmount] = useState("");
@@ -77,14 +77,16 @@ export const AddInvoiceForm: React.FC<{
         billed_amount: parseFloat(amount),
         deposit_date: depositDate || undefined,
       };
+
       if (brokerId) payload.broker_id = brokerId;
+
       const newInvoice = await call(
         () => addInvoice(payload),
         "Facture ajoutée"
       );
       if (newInvoice) {
         onAddInvoice(newInvoice);
-        setCompanyId("");
+        setCompanyId(null);
         setBrokerId(null);
         setInvoiceMonth("");
         setDepositDate("");
@@ -120,8 +122,10 @@ export const AddInvoiceForm: React.FC<{
           </label>
           <select
             id="company"
-            value={companyId}
-            onChange={(e) => setCompanyId(e.target.value)}
+            value={companyId ?? ""}
+            onChange={(e) =>
+              setCompanyId(e.target.value ? Number(e.target.value) : null)
+            }
             className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">Choisir...</option>
@@ -145,7 +149,9 @@ export const AddInvoiceForm: React.FC<{
           <select
             id="broker"
             value={brokerId || ""}
-            onChange={(e) => setBrokerId(e.target.value || null)}
+            onChange={(e) =>
+              setBrokerId(e.target.value ? Number(e.target.value) : null)
+            }
             className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
             disabled={!companyId}
           >

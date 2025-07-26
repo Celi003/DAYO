@@ -19,7 +19,7 @@ export const ReminderModal: React.FC<{
       setIsLoading(true);
       setError("");
       try {
-        const data = await generateReclamationLetter(invoice.id);
+        const data = await generateReclamationLetter(String(invoice.id));
         setLetter(data.letter);
       } catch (e: any) {
         setError(e.message || "Erreur lors de la génération de la lettre.");

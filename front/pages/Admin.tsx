@@ -52,7 +52,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
     password: string;
     permissions: string[];
   }>({ username: "", password: "", permissions: [] });
-  const [activationUserId, setActivationUserId] = useState<string | null>(null);
+  const [activationUserId, setActivationUserId] = useState<number | null>(null);
   const [activationDuration, setActivationDuration] =
     useState<string>("1_MONTH");
 
@@ -88,13 +88,13 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
 
   const handleToggleActive = async (user: User) => {
     await call(
-      () => updateUser(user.id, { isActive: !user.isActive }),
+      () => updateUser(String(user.id), { isActive: !user.isActive }),
       "Statut utilisateur mis à jour"
     );
     await fetchUsers();
   };
 
-  const handleDateChange = (userId: string, date: string) => {
+  const handleDateChange = (userId: number, date: string) => {
     setUsers((prevUsers) =>
       prevUsers.map((u) =>
         u.id === userId ? { ...u, subscriptionEndDate: date } : u
@@ -105,7 +105,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
   const handleSaveDate = async (user: User) => {
     await call(
       () =>
-        updateUser(user.id, { subscriptionEndDate: user.subscriptionEndDate }),
+        updateUser(String(user.id), { subscriptionEndDate: user.subscriptionEndDate }),
       `Date d'abonnement mise à jour pour ${user.username}.`
     );
     await fetchUsers();
@@ -137,7 +137,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
     if (!editingUser) return;
     await call(
       () =>
-        updateUser(editingUser.id, {
+        updateUser(String(editingUser.id), {
           role: editingUser.role,
           permissions: editingUser.permissions,
         }),
@@ -305,7 +305,9 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                             <option value="1_YEAR">1 an</option>
                           </select>
                           <button
-                            onClick={() => handleActivateProvider(user.id)}
+                            onClick={() =>
+                              handleActivateProvider(String(user.id))
+                            }
                             className="text-xs bg-green-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-green-700"
                           >
                             Valider

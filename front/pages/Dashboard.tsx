@@ -333,7 +333,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                       <button
                         className="text-sm font-medium text-slate-700 hover:underline"
                         onClick={() =>
-                          partnerObj && setFilterPartner(partnerObj.id)
+                          partnerObj && setFilterPartner(String(partnerObj.id))
                         }
                         aria-label={`Filtrer sur le partenaire ${p.name}`}
                       >

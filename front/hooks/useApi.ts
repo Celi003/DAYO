@@ -6,13 +6,13 @@ import {
   getCompanies,
   getInvoiceStatistics,
 } from "@/services/api";
-import { Invoice, Company, Broker, Partner } from "@/types";
+import { Invoice, Company, Broker, Partner, Provider } from "@/types";
 
 export function useBillingData(selectedYear: number) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
-  const [partners, setPartners] = useState<Partner[]>([]);
+  const [partners, setPartners] = useState<Provider[]>([]);
   const [stats, setStats] = useState({
     totalInvoiced: 0,
     totalPaid: 0,
