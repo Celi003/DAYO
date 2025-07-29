@@ -23,6 +23,7 @@ const App: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -32,6 +33,25 @@ const App: React.FC = () => {
     };
     checkUser();
   }, []);
+
+  useEffect(() => {
+    const loadUnreadNotificationsCount = async () => {
+      if (currentUser) {
+        try {
+          const notifications = await api.getNotifications();
+          const unreadCount = notifications?.filter((n: any) => !n.is_read).length || 0;
+          setUnreadNotificationsCount(unreadCount);
+        } catch (error) {
+          console.error('Error loading notifications count:', error);
+        }
+      }
+    };
+
+    loadUnreadNotificationsCount();
+    // Rafraîchir toutes les 30 secondes
+    const interval = setInterval(loadUnreadNotificationsCount, 30000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
@@ -49,6 +69,7 @@ const App: React.FC = () => {
         onLogout={handleLogout}
         isCollapsed={isSidebarCollapsed}
         setCollapsed={setIsSidebarCollapsed}
+        unreadNotificationsCount={unreadNotificationsCount}
       />
       <main className="flex-1 overflow-y-auto transition-all duration-300 ease-in-out p-6">
         {children}

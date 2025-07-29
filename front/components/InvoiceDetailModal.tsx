@@ -8,8 +8,8 @@ import { formatCurrency } from '../utils/helpers';
 
 interface InvoiceDetailModalProps {
     invoice: Invoice;
-    company: Company;
-    broker: Broker | null;
+    company?: Company | null;
+    broker?: Broker | null;
     onClose: () => void;
     onUpdate: (updatedInvoice: Invoice) => void;
 }
@@ -147,7 +147,7 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
     
     const stats = useMemo(() => {
         const totalPaid = invoice.payments!.reduce((sum, p) => sum + p.amount, 0);
-        const totalRejected = invoice.rejections!.reduce((sum, r) => sum + r.rejected_amount, 0);
+        const totalRejected = invoice.rejections!.reduce((sum, r) => sum + r.amount, 0);
         const outstanding = invoice.billed_amount - totalPaid - totalRejected;
         return { totalPaid, totalRejected, outstanding };
     }, [invoice]);
@@ -173,16 +173,18 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
         <Modal isOpen={true} onClose={onClose} title={title}>
             {/* Summary */}
             <div className="bg-slate-50 p-4 rounded-lg mb-6">
-                <div className="flex justify-between items-center mb-2">
-                    <p className="text-slate-600">Compagnie:</p>
-                    <p className="font-bold text-lg">{company.name}</p>
-                </div>
-                {broker &&
+                {company && (
+                  <div className="flex justify-between items-center mb-2">
+                      <p className="text-slate-600">Compagnie:</p>
+                      <p className="font-bold text-lg">{company.name}</p>
+                  </div>
+                )}
+                {broker && (
                   <div className="flex justify-between items-center mb-2">
                       <p className="text-slate-600">Courtier:</p>
                       <p className="font-semibold">{broker.name}</p>
                   </div>
-                }
+                )}
                  <div className="flex justify-between items-center mb-4">
                     <p className="text-slate-600">Mois de la facture:</p>
                     <p className="font-semibold">{invoice.invoice_month}</p>

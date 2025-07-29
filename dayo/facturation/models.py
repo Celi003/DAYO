@@ -44,7 +44,7 @@ class Broker(models.Model):
 
 class Company(models.Model):
     name = models.CharField(max_length=255)
-    broker = models.ForeignKey(Broker, on_delete=models.CASCADE, related_name='companies')
+    broker = models.ForeignKey(Broker, on_delete=models.CASCADE, related_name='companies', null=True, blank=True)
     contact_email = models.EmailField(blank=True, null=True)
 
     def __str__(self):
@@ -60,7 +60,7 @@ class Invoice(models.Model):
 
     provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='invoices')
     broker = models.ForeignKey(Broker, on_delete=models.CASCADE, related_name='invoices', null=True, blank=True)
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='invoices')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='invoices', null=True, blank=True)
     invoice_number = models.CharField(max_length=100)
     deposit_date = models.DateField(null=True, blank=True)
     invoice_month = models.DateField()

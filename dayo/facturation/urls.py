@@ -24,4 +24,5 @@ urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
     path('register/', RegisterView.as_view(), name='register'),
     path('api-token-auth/', obtain_auth_token, name='api_token_auth'),
+    path('export/', ExportView.as_view(), name='export'),     # ← Nouvelle vue d'export
 ]

@@ -131,6 +131,8 @@ export const getProviders = async () => {
   return await res.json();
 };
 
+
+
 export const getBrokers = async () => {
   const res = await fetch(`${API_BASE}/brokers/`, { headers: getHeaders() });
   if (!res.ok) throw new Error('Erreur lors de la récupération des courtiers');
@@ -287,7 +289,7 @@ export const getInvoiceStatistics = async (params: Record<string, string | numbe
 // EXPORT
 export const exportInvoices = async (format: 'excel' | 'pdf', params: Record<string, string | number> = {}) => {
   const query = new URLSearchParams({ ...params, format }).toString();
-  const res = await fetch(`${API_BASE}/invoices/export/?${query}`, { headers: getHeaders(false) });
+  const res = await fetch(`${API_BASE}/export/?${query}`, { headers: getHeaders(false) });
   if (!res.ok) throw new Error('Erreur lors de l\'export');
   const blob = await res.blob();
   return blob;
@@ -474,7 +476,7 @@ export const getNotifications = async () => {
 export async function patchNotification(id: number, is_read: boolean) {
   const res = await fetch(`${API_BASE}/notifications/${id}/`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getHeaders(),
     body: JSON.stringify({ is_read }),
   });
   if (!res.ok) throw new Error('Erreur lors de la mise à jour');

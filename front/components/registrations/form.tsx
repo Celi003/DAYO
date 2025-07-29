@@ -20,14 +20,11 @@ export const AddInvoiceForm: React.FC<{
   const { notify } = useNotification();
   const { call } = useApi();
 
-  const availableBrokers = useMemo(() => {
-    if (!companyId) return [];
-    return brokers.filter((b) => b.companyId === companyId);
-  }, [companyId, brokers]);
+
 
   const validate = () => {
     const errs: { [key: string]: string } = {};
-    if (!companyId) errs.companyId = "Compagnie requise";
+    if (!companyId && !brokerId) errs.companyId = "Compagnie ou courtier requis";
     if (!invoiceMonth) errs.invoiceMonth = "Mois requis";
     if (!depositDate) errs.depositDate = "Date requise";
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0)
@@ -71,13 +68,13 @@ export const AddInvoiceForm: React.FC<{
       const invoiceNumber = `INV-${Date.now()}`;
       const payload: any = {
         provider_id: providerId,
-        company_id: companyId,
         invoice_number: invoiceNumber,
         invoice_month: parseMonthYearToDate(invoiceMonth),
         billed_amount: parseFloat(amount),
         deposit_date: depositDate || undefined,
       };
 
+      if (companyId) payload.company_id = companyId;
       if (brokerId) payload.broker_id = brokerId;
 
       const newInvoice = await call(
@@ -118,7 +115,7 @@ export const AddInvoiceForm: React.FC<{
             htmlFor="company"
             className="block text-sm font-medium text-slate-700 mb-1"
           >
-            Compagnie
+            Compagnie (Optionnel)
           </label>
           <select
             id="company"
@@ -128,7 +125,7 @@ export const AddInvoiceForm: React.FC<{
             }
             className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
           >
-            <option value="">Choisir...</option>
+            <option value="">Aucune</option>
             {companies.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -153,10 +150,9 @@ export const AddInvoiceForm: React.FC<{
               setBrokerId(e.target.value ? Number(e.target.value) : null)
             }
             className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            disabled={!companyId}
           >
             <option value="">Aucun</option>
-            {availableBrokers.map((b) => (
+            {brokers.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>

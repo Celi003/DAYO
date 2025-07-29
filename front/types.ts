@@ -25,7 +25,7 @@ export interface Partner {
 export interface Company {
   id: number;
   name: string;
-  broker?: Broker;
+  broker?: Broker | null;
   contact_email: string;
 }
 
@@ -46,7 +46,7 @@ export interface Invoice {
   invoice_month: string; 
   billed_amount: number;
   provider: Provider;
-  company: Company;
+  company?: Company | null;
   broker?: Broker | null;
   payments?: Payment[];
   rejections?: Rejection[];
@@ -55,6 +55,7 @@ export interface Invoice {
 export interface Provider extends Pick<User, "subscription_expiry" | "subscription_status"> {
   id: number;
   user: User;
+  user_id: number;
   name: string;
 }
 
@@ -69,6 +70,7 @@ export interface Payment {
 export interface Rejection {
   id: number;
   rejected_amount: number;
+  amount: number; // Mapped from rejected_amount in API
   rejection_reason: string;
   rejection_date: string;
 }
@@ -96,5 +98,7 @@ export interface Transaction {
   amount: number;
   reason?: string;
   providerName?: string;
+  companyName?: string;
+  brokerName?: string;
 }
 export type Page = 'dashboard' | 'registrations' | 'payments' | 'partners' | 'admin' | 'notifications';

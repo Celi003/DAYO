@@ -280,7 +280,24 @@ const Payments: React.FC<PaymentsProps> = ({
                                 {t.providerName}
                               </td>
                             )}
-                            <td className="p-4 font-medium">{t.partnerName}</td>
+                            <td className="p-4 font-medium">
+                              {t.partnerName}
+                              {t.companyName && t.brokerName && (
+                                <span className="text-sm text-slate-500 ml-1">
+                                  ({t.companyName} - {t.brokerName})
+                                </span>
+                              )}
+                              {t.companyName && !t.brokerName && (
+                                <span className="text-sm text-slate-500 ml-1">
+                                  ({t.companyName})
+                                </span>
+                              )}
+                              {!t.companyName && t.brokerName && (
+                                <span className="text-sm text-slate-500 ml-1">
+                                  ({t.brokerName})
+                                </span>
+                              )}
+                            </td>
                             <td className="p-4 text-slate-600">
                               {t.invoiceMonth}
                             </td>

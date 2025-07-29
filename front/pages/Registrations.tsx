@@ -42,9 +42,6 @@ const Registrations: React.FC<RegistrationsProps> = ({
   } = useRegistrations(selectedYear);
 
   const partnerId = partners.find((p) => p.user.id === user.id)?.id ?? null;
-  useEffect(() => {
-    console.log("Registrations component mounted", { user, partners, partnerId });
-  }, [user, partners]);
   return (
     <React.Fragment>
       <div className="mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -125,10 +122,10 @@ const Registrations: React.FC<RegistrationsProps> = ({
           resetFilters={resetFilters}
         />
       </div>
-      {invoiceForReminder && companyMap.get(invoiceForReminder.company.id) && (
+      {invoiceForReminder && (
         <ReminderModal
           invoice={invoiceForReminder}
-          company={companyMap.get(invoiceForReminder.company.id)!}
+          company={invoiceForReminder.company?.id ? companyMap.get(invoiceForReminder.company.id) || null : null}
           broker={
             invoiceForReminder.broker?.id
               ? brokerMap.get(invoiceForReminder.broker.id) || null
@@ -137,10 +134,10 @@ const Registrations: React.FC<RegistrationsProps> = ({
           onClose={() => setInvoiceForReminder(null)}
         />
       )}
-      {invoiceForDetails && companyMap.get(invoiceForDetails.company.id) && (
+      {invoiceForDetails && (
         <InvoiceDetailModal
           invoice={invoiceForDetails}
-          company={companyMap.get(invoiceForDetails.company.id)!}
+          company={invoiceForDetails.company?.id ? companyMap.get(invoiceForDetails.company.id) || null : null}
           broker={
             invoiceForDetails.broker?.id
               ? brokerMap.get(invoiceForDetails.broker.id) || null

@@ -51,7 +51,7 @@ export const InvoiceTable: React.FC<{
   const filtered = useMemo(() => {
     return invoices.filter((inv: Invoice) => {
       const companyMatch =
-        !filters.company || inv.company.name === filters.company;
+        !filters.company || inv.company?.name === filters.company;
       const status = getInvoiceStatus(inv).text;
       const statusMatch = !filters.status || status === filters.status;
       const date = inv.deposit_date || "";
@@ -211,7 +211,7 @@ export const InvoiceTable: React.FC<{
           <tbody className="bg-white divide-y divide-gray-200">
             {paged.map((invoice) => {
               const company = companies.find(
-                (c) => c.id === invoice.company.id
+                (c) => c.id === invoice.company?.id
               );
               const broker = brokers.find((b) => b.id === invoice.broker?.id);
 

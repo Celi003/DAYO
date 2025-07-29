@@ -84,13 +84,22 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
       const partnerId: number | undefined = isCompany
         ? invoice.company?.id
         : invoice.broker?.id;
-      const partnerName = isCompany
-        ? typeof partnerId === "number"
-          ? (companyMap.get(partnerId) as Company)?.name || "Inconnu"
-          : "Inconnu"
-        : typeof partnerId === "number"
-          ? (brokerMap.get(partnerId) as Broker)?.name?.toLowerCase() || "Inconnu"
-          : "Inconnu";
+      
+      // Récupérer les noms de compagnie et courtier
+      const companyName = invoice.company?.id 
+        ? (companyMap.get(invoice.company.id) as Company)?.name 
+        : undefined;
+      const brokerName = invoice.broker?.id 
+        ? (brokerMap.get(invoice.broker.id) as Broker)?.name 
+        : undefined;
+      
+      // Déterminer le nom du partenaire principal
+      let partnerName = "Inconnu";
+      if (isCompany && companyName) {
+        partnerName = companyName;
+      } else if (!isCompany && brokerName) {
+        partnerName = brokerName;
+      }
 
       invoice.payments?.forEach((payment) => {
         console.log("Adding payment transaction", {
@@ -107,6 +116,8 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
           type: "Paiement",
           amount: payment.amount,
           providerName: invoice.provider.name,
+          companyName,
+          brokerName,
         });
       });
 
@@ -126,6 +137,8 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
           amount: rejection.rejected_amount,
           reason: rejection.rejection_reason,
           providerName: invoice.provider.name,
+          companyName,
+          brokerName,
         });
       });
     });

@@ -5,7 +5,7 @@ import { useNotification } from "../NotificationContext";
 
 export const ReminderModal: React.FC<{
   invoice: Invoice;
-  company: Company;
+  company?: Company | null;
   broker?: Broker | null;
   onClose: () => void;
 }> = ({ invoice, onClose }) => {

@@ -12,10 +12,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 class ProviderSerializer(serializers.ModelSerializer):
     user = UserProfileSerializer(read_only=True)
+    user_id = serializers.IntegerField(source='user.user.id', read_only=True)
 
     class Meta:
         model = Provider
-        fields = ['id', 'name', 'user', 'subscription_status', 'subscription_expiry']
+        fields = ['id', 'name', 'user', 'user_id', 'subscription_status', 'subscription_expiry']
 
 
 class BrokerSerializer(serializers.ModelSerializer):
@@ -26,7 +27,7 @@ class BrokerSerializer(serializers.ModelSerializer):
 
 class CompanySerializer(serializers.ModelSerializer):
     broker = BrokerSerializer(read_only=True)
-    broker_id = serializers.PrimaryKeyRelatedField(queryset=Broker.objects.all(), source='broker', write_only=True)
+    broker_id = serializers.PrimaryKeyRelatedField(queryset=Broker.objects.all(), source='broker', write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = Company
@@ -51,7 +52,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
     broker = BrokerSerializer(read_only=True)
     broker_id = serializers.PrimaryKeyRelatedField(queryset=Broker.objects.all(), source='broker', write_only=True, required=False, allow_null=True)
     company = CompanySerializer(read_only=True)
-    company_id = serializers.PrimaryKeyRelatedField(queryset=Company.objects.all(), source='company', write_only=True)
+    company_id = serializers.PrimaryKeyRelatedField(queryset=Company.objects.all(), source='company', write_only=True, required=False, allow_null=True)
     payments = PaymentSerializer(many=True, read_only=True)
     rejections = RejectionSerializer(many=True, read_only=True)
     remaining_amount = serializers.SerializerMethodField()
@@ -72,6 +73,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
     def get_rejected_amount(self, obj):
         return obj.rejected_amount()
+    
+
 
 
 class AuditLogSerializer(serializers.ModelSerializer):

@@ -108,19 +108,24 @@ const Notifications: React.FC = () => {
             return (
               <li
                 key={notif.id}
-                className={`p-4 rounded-lg shadow-sm flex items-center justify-between border-l-4 transition-all duration-200 hover:shadow-md ${
+                className={`p-4 rounded-lg shadow-sm flex items-center justify-between border-l-4 transition-all duration-200 hover:shadow-md relative ${
                   notif.is_read
                     ? `${colors.bgRead} ${colors.border} opacity-75`
                     : `${colors.bg} ${colors.border}`
                 }`}
               >
+                {!notif.is_read && (
+                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse shadow-lg">
+                    NEW
+                  </div>
+                )}
                 <div className="flex-1">
                   <div
-                    className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mb-2 ${colors.badge}`}
+                    className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mb-2 ${colors.badge} relative`}
                   >
                     {typeLabel[notif.notif_type] || notif.notif_type}
                     {!notif.is_read && (
-                      <span className="ml-1 w-2 h-2 bg-current rounded-full opacity-60"></span>
+                      <span className="ml-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
                     )}
                   </div>
                   <div className={`text-base font-medium ${colors.text} mb-1`}>

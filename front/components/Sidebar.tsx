@@ -8,6 +8,7 @@ interface SidebarProps {
   onLogout: () => void;
   isCollapsed: boolean;
   setCollapsed: (isCollapsed: boolean) => void;
+  unreadNotificationsCount?: number;
 }
 
 const NavIcon: React.FC<{ name: Page | 'logout' }> = ({ name }: { name: Page | 'logout' }) => {
@@ -46,7 +47,7 @@ const pageToPath: { [key in Page]: string } = {
   admin: '/admin',
 };
 
-const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setCollapsed }) => {
+const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setCollapsed, unreadNotificationsCount = 0 }) => {
   const location = useLocation();
   const baseNavItems: { id: Page; label: string; path: string }[] = [
     { id: 'dashboard', label: 'Tableau de bord', path: pageToPath.dashboard },
@@ -79,7 +80,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setColla
             <li key={item.id}>
               <Link
                 to={item.path}
-                className={`w-full flex items-center px-4 py-3 my-1 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                className={`w-full flex items-center px-4 py-3 my-1 rounded-lg text-sm font-medium transition-colors duration-200 relative ${
                   isCollapsed ? 'justify-center' : ''
                 } ${
                   location.pathname === item.path
@@ -91,6 +92,11 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setColla
               >
                 <NavIcon name={item.id} />
                 {!isCollapsed && <span className="ml-3 whitespace-nowrap">{item.label}</span>}
+                {item.id === 'notifications' && unreadNotificationsCount > 0 && (
+                  <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse">
+                    {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                  </div>
+                )}
               </Link>
             </li>
           ))}
