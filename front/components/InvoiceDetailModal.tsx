@@ -12,6 +12,7 @@ interface InvoiceDetailModalProps {
     broker?: Broker | null;
     onClose: () => void;
     onUpdate: (updatedInvoice: Invoice) => void;
+    userRole?: string;
 }
 
 const TransactionForm: React.FC<{ invoiceId: number; onUpdate: (updatedInvoice: Invoice) => void; isSettled?: boolean }> = ({ invoiceId, onUpdate, isSettled }) => {
@@ -143,7 +144,7 @@ const TransactionForm: React.FC<{ invoiceId: number; onUpdate: (updatedInvoice: 
 }
 
 
-const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, company, broker, onClose, onUpdate }) => {
+const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, company, broker, onClose, onUpdate, userRole }) => {
     
     const stats = useMemo(() => {
         const totalPaid = invoice.payments!.reduce((sum, p) => sum + p.amount, 0);
@@ -174,10 +175,10 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
             {/* Summary */}
             <div className="bg-slate-50 p-4 rounded-lg mb-6">
                 {company && (
-                  <div className="flex justify-between items-center mb-2">
-                      <p className="text-slate-600">Compagnie:</p>
-                      <p className="font-bold text-lg">{company.name}</p>
-                  </div>
+                <div className="flex justify-between items-center mb-2">
+                    <p className="text-slate-600">Compagnie:</p>
+                    <p className="font-bold text-lg">{company.name}</p>
+                </div>
                 )}
                 {broker && (
                   <div className="flex justify-between items-center mb-2">
@@ -210,8 +211,10 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
                 </div>
             </div>
 
-            {/* Transactions */}
+            {/* Transactions - Only show for providers, not for admins */}
+            {userRole !== 'admin' && (
             <TransactionForm invoiceId={invoice.id} onUpdate={onUpdate} isSettled={stats.totalPaid + stats.totalRejected >= invoice.billed_amount} />
+            )}
 
             <div className="mt-6">
                 <button onClick={handleGenerateLetter} className="bg-orange-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-orange-700 text-sm">

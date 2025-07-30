@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate, login
+from django.contrib.auth.models import User
 from django.db.models import Sum, Count, Q
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -72,30 +73,56 @@ class RegisterView(APIView):
         password = request.data.get('password')
         name = request.data.get('name')
         email = request.data.get('email')
+        
+        if not username or not password:
+            return Response({'error': 'Username and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+            
         if User.objects.filter(username=username).exists():
             return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.create_user(username=username, password=password, email=email)
-        UserProfile.objects.create(
-            user=user,
-            username=username,
-            role='PROVIDER',  # Default to PROVIDER; adjust if needed
-            email=email
-        )
-        # Notify admins of new account
-        admin_emails = UserProfile.objects.filter(role='ADMIN').values_list('email', flat=True)
-        if admin_emails:
-            send_notification_email.delay(
-                subject=f'New Provider Account Created: {username}',
-                message=f'A new provider account for {username} has been created. Please review and activate the account.',
-                recipient_list=list(admin_emails)
+        try:
+            user = User.objects.create_user(username=username, password=password, email=email)
+            UserProfile.objects.create(
+                user=user,
+                username=username,
+                role='PROVIDER',  # Default to PROVIDER; adjust if needed
+                email=email
             )
 
-        return Response({
-            'user_id': user.id,
-            'username': user.username,
-            'message': 'Account created. Awaiting admin activation.'
-        }, status=status.HTTP_201_CREATED)
+            # Notify admins of new account (optional - don't fail if email fails)
+            try:
+                admin_emails = UserProfile.objects.filter(role='ADMIN').values_list('email', flat=True)
+                if admin_emails:
+                    # Try to send email, but don't fail if it doesn't work
+                    try:
+                        send_notification_email.delay(
+                            subject=f'New Provider Account Created: {username}',
+                            message=f'A new provider account for {username} has been created. Please review and activate the account.',
+                            recipient_list=list(admin_emails)
+                        )
+                    except:
+                        # If Celery is not running or email fails, just continue
+                        pass
+                
+                # Notification interne aux admins
+                for admin_user in User.objects.filter(userprofile__role='ADMIN'):
+                    Notification.objects.create(
+                        user=admin_user,
+                        notif_type='INFO',
+                        message=f"Nouveau compte prestataire créé : {username}. Veuillez activer le compte."
+                    )
+            except Exception as e:
+                # Log the error but don't fail the registration
+                print(f"Failed to get admin emails: {e}")
+
+            return Response({
+                'user_id': user.id,
+                'username': user.username,
+                'message': 'Account created. Awaiting admin activation.'
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({'error': f'Error creating account: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class UserProfileViewSet(viewsets.ModelViewSet):
@@ -292,6 +319,11 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     serializer_class = InvoiceSerializer
     permission_classes = [IsAdminOrActiveProvider]
 
+    def get_permissions(self):
+        if self.action == 'destroy':
+            return [IsAuthenticated(), IsAdmin()]
+        return super().get_permissions()
+
     def get_queryset(self):
         user = self.request.user
         queryset = Invoice.objects.select_related('provider', 'company', 'broker').prefetch_related('payments', 'rejections')
@@ -323,15 +355,64 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         )
 
     def perform_destroy(self, instance):
-        AuditLog.objects.create(
-            user=self.request.user,
-            action='DELETE',
-            entity='Invoice',
-            details=f'Deleted invoice {instance.invoice_number} (id={instance.id})'
-        )
-        instance.delete()
+        try:
+            print(f"Starting deletion of invoice {instance.id} ({instance.invoice_number})")
+            
+            # Sauvegarder les informations avant suppression
+            invoice_number = instance.invoice_number
+            provider_user_id = instance.provider.user.id
+            provider_username = instance.provider.user.username
+            
+            # Supprimer d'abord les notifications liées à cette facture
+            try:
+                instance.notifications.all().delete()
+                print(f"Deleted {instance.notifications.count()} notifications")
+            except Exception as e:
+                print(f"Error deleting notifications: {str(e)}")
+            
+            # Supprimer d'abord les paiements et rejets
+            try:
+                instance.payments.all().delete()
+                instance.rejections.all().delete()
+                print(f"Deleted payments and rejections")
+            except Exception as e:
+                print(f"Error deleting payments/rejections: {str(e)}")
+            
+            # Supprimer la facture
+            instance.delete()
+            print(f"Invoice {instance.id} deleted successfully")
+            
+            # Notification au prestataire que sa facture a été supprimée
+            try:
+                provider_user = User.objects.get(id=provider_user_id)
+                Notification.objects.create(
+                    user=provider_user,
+                    notif_type='WARNING',
+                    message=f"Votre facture {invoice_number} a été supprimée par l'administrateur."
+                )
+                print(f"Notification created for user {provider_username}")
+            except Exception as e:
+                print(f"Error creating notification: {str(e)}")
+            
+            # Audit log
+            try:
+                AuditLog.objects.create(
+                    user=self.request.user,
+                    action='DELETE',
+                    entity='Invoice',
+                    details=f'Deleted invoice {invoice_number}'
+                )
+                print(f"Audit log created")
+            except Exception as e:
+                print(f"Error creating audit log: {str(e)}")
+            
+        except Exception as e:
+            print(f"Error deleting invoice {instance.id}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsActiveProvider | IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsActiveProvider])
     def add_payment(self, request, pk=None):
         invoice = self.get_object()
         serializer = PaymentSerializer(data=request.data)
@@ -351,7 +432,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsActiveProvider | IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsActiveProvider])
     def add_rejection(self, request, pk=None):
         invoice = self.get_object()
         serializer = RejectionSerializer(data=request.data)
@@ -443,11 +524,27 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         if remaining <= 0 and not invoice.rejections.exists():
             return Response({'error': 'No reclamation needed'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Déterminer le destinataire et l'email selon le type de facture
+        if invoice.company:
+            # Facture avec compagnie
+            recipient_name = invoice.company.name
+            recipient_email = invoice.company.contact_email
+        elif invoice.broker:
+            # Facture avec courtier seulement
+            recipient_name = invoice.broker.name
+            recipient_email = invoice.broker.email
+        else:
+            return Response({'error': 'No company or broker found for this invoice'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Vérifier que l'email existe
+        if not recipient_email:
+            return Response({'error': f'No email address found for {recipient_name}'}, status=status.HTTP_400_BAD_REQUEST)
+
         letter = f"""
         Reclamation Letter
         Invoice Number: {invoice.invoice_number}
         Date: {datetime.now(pytz.UTC).strftime('%Y-%m-%d')}
-        To: {invoice.company.name}
+        To: {recipient_name}
         Subject: Payment Reclamation
 
         Dear Sir/Madam,
@@ -465,12 +562,17 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         Sincerely,
         {invoice.provider.name}
         """
-        # Send email to company
-        send_notification_email(
-            subject=f'Payment Reclamation for Invoice {invoice.invoice_number}',
-            message=letter,
-            recipient_list=[invoice.company.contact_email]
-        )
+        
+        # Send email to recipient
+        try:
+            send_notification_email(
+                subject=f'Payment Reclamation for Invoice {invoice.invoice_number}',
+                message=letter,
+                recipient_list=[recipient_email]
+            )
+        except Exception as e:
+            return Response({'error': f'Failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
         # Notification interne au provider
         Notification.objects.create(
             user=invoice.provider.user,
@@ -478,6 +580,15 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             message=f"Une relance de paiement a été envoyée pour la facture {invoice.invoice_number} ({remaining} FCFA restants).",
             invoice=invoice
         )
+        
+        # Notification interne aux admins
+        for admin_user in User.objects.filter(userprofile__role='ADMIN'):
+            Notification.objects.create(
+                user=admin_user,
+                notif_type='INFO',
+                message=f"Lettre de relance envoyée pour la facture {invoice.invoice_number} ({recipient_name}) par {invoice.provider.name}."
+            )
+        
         return Response({'message': 'Reclamation letter sent successfully', 'letter': letter})
 
 
@@ -663,12 +774,17 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.userprofile.role == 'ADMIN':
-            return Notification.objects.all().order_by('-created_at')
+        # Chaque utilisateur ne voit que ses propres notifications
         return Notification.objects.filter(user=user).order_by('-created_at')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    def perform_destroy(self, instance):
+        # Chaque utilisateur ne peut supprimer que ses propres notifications
+        if instance.user != self.request.user:
+            raise PermissionError("Vous ne pouvez supprimer que vos propres notifications")
+        instance.delete()
 
     def update(self, request, *args, **kwargs):
         # Only allow marking as read/unread
@@ -680,6 +796,59 @@ class NotificationViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['delete'], permission_classes=[IsAuthenticated])
+    def clear_all(self, request):
+        """Supprimer toutes les notifications de l'utilisateur connecté uniquement"""
+        user = request.user
+        # Chaque utilisateur ne peut supprimer que ses propres notifications
+        count = Notification.objects.filter(user=user).delete()[0]
+        
+        return Response({
+            'message': f'{count} notification(s) supprimée(s)',
+            'deleted_count': count
+        }, status=status.HTTP_200_OK)
+
+
+
+
+class CreateSubadminView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+    
+    def post(self, request):
+        """Créer un sous-admin avec des permissions personnalisées"""
+        username = request.data.get('username')
+        password = request.data.get('password')
+        permissions = request.data.get('permissions', [])
+        
+        if not username or not password:
+            return Response({'error': 'Username and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if User.objects.filter(username=username).exists():
+            return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Créer l'utilisateur
+            user = User.objects.create_user(username=username, password=password)
+            
+            # Créer le profil utilisateur
+            profile = UserProfile.objects.create(
+                user=user,
+                username=username,
+                role='ADMIN',  # Sous-admin = admin avec permissions limitées
+                is_active=True,
+                email=user.email or f"{username}@example.com",
+                permissions=permissions  # Stocker les permissions comme JSON
+            )
+            
+            return Response({
+                'user_id': user.id,
+                'username': user.username,
+                'message': 'Sous-admin créé avec succès'
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({'error': f'Error creating subadmin: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ExportView(APIView):

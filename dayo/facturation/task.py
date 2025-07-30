@@ -1,5 +1,5 @@
 from celery import shared_task
-from datetime import datetime
+from datetime import datetime, timedelta
 from .models import *
 import pytz
 from django.core.mail import send_mail
@@ -21,16 +21,19 @@ def send_notification_email(subject, message, recipient_list):
 def check_subscription_expiry():
     profiles = UserProfile.objects.filter(role='PROVIDER', is_active=True)
     admin_emails = UserProfile.objects.filter(role='ADMIN').values_list('email', flat=True)
+    now = datetime.now(pytz.UTC)
 
     for profile in profiles:
-        if profile.subscription_expiry and profile.subscription_expiry < datetime.now(pytz.UTC):
-            profile.is_active = False
-            profile.subscription_status = 'INACTIVE'
+        if profile.subscription_expiry:
+            # Vérifier si l'abonnement a expiré
+            if profile.subscription_expiry < now:
+                profile.is_active = False
+                profile.subscription_status = 'INACTIVE'
             profile.save()
 
             provider = Provider.objects.get(user=profile.user)
             provider.subscription_status = 'INACTIVE'
-            provider.subscription_expiry = datetime.now(pytz.UTC)
+            provider.subscription_expiry = now
             provider.save()
 
             # Notify provider
@@ -59,4 +62,14 @@ def check_subscription_expiry():
                         user=admin_user,
                         notif_type='WARNING',
                         message=f"L'abonnement du prestataire {profile.user.username} a expiré le {profile.subscription_expiry.strftime('%d/%m/%Y')}."
+                        )
+            
+            # Vérifier si l'abonnement va expirer dans les 7 prochains jours
+            elif profile.subscription_expiry <= now + timedelta(days=7):
+                # Notification aux admins que l'abonnement va expirer
+                for admin_user in User.objects.filter(userprofile__role='ADMIN'):
+                    Notification.objects.create(
+                        user=admin_user,
+                        notif_type='WARNING',
+                        message=f"L'abonnement du prestataire {profile.user.username} va expirer le {profile.subscription_expiry.strftime('%d/%m/%Y')}."
                     )

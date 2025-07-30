@@ -44,15 +44,7 @@ const Payments: React.FC<PaymentsProps> = ({
     companyMap,
   } = usePayments(selectedYear, filters);
 
-  useEffect(() => {
-    console.log("Payments component mounted with selectedYear:", selectedYear);
-    console.log("Initial transactions", transactions);
-    console.log("Initial filters", filters);
-    console.log("Grouped transactions", groupedTransactions);
-    console.log("Monthly transactions", monthlyTransactions);
-    console.log("Companies", companyMap);
-    console.log("Brokers", brokers);
-  }, [selectedYear, transactions]);
+
 
   const handlePageChange = (monthKey: string, newPage: number) => {
     setPageByMonth((prev) => ({ ...prev, [monthKey]: newPage }));

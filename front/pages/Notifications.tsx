@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Notification } from "../types";
-import { useApi, getNotifications, patchNotification } from "../services/api";
+import { useApi, getNotifications, patchNotification, clearAllNotifications, deleteNotification } from "../services/api";
 import { useNotification } from "../components/NotificationContext";
+import { Trash2 } from "lucide-react";
 
 const typeLabel: Record<string, string> = {
   REMINDER: "Relance",
@@ -84,6 +85,26 @@ const Notifications: React.FC = () => {
     );
   };
 
+  const handleClearAll = async () => {
+    if (window.confirm("Êtes-vous sûr de vouloir supprimer toutes les notifications ?")) {
+      const result = await call(() => clearAllNotifications(), "Toutes les notifications ont été supprimées");
+      if (result) {
+        setNotifications([]);
+      }
+    }
+  };
+
+  const handleDelete = async (notif: Notification) => {
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer la notification "${notif.message}"?`)) {
+      const result = await call(() => deleteNotification(notif.id), "Notification supprimée");
+      if (result) {
+        setNotifications((notifications: Notification[]) =>
+          notifications.filter((n: Notification) => n.id !== notif.id)
+        );
+      }
+    }
+  };
+
   const getNotificationColors = (type: string) => {
     return typeColors[type] || typeColors.CUSTOM;
   };
@@ -91,12 +112,22 @@ const Notifications: React.FC = () => {
   return (
     <div className="p-8 max-w-3xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">Notifications</h1>
+      <div className="flex gap-4 mb-4">
       <button
         onClick={load}
-        className="mb-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
       >
         Rafraîchir
       </button>
+        {notifications.length > 0 && (
+          <button
+            onClick={handleClearAll}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Supprimer toutes
+          </button>
+        )}
+      </div>
       {loading ? (
         <div>Chargement...</div>
       ) : notifications.length === 0 ? (
@@ -160,6 +191,14 @@ const Notifications: React.FC = () => {
                       Marquer comme non lue
                     </button>
                   )}
+                  <button
+                    onClick={() => handleDelete(notif)}
+                    className="text-xs bg-red-600 text-white px-3 py-1.5 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 transition-colors flex items-center"
+                    aria-label={`Supprimer la notification "${notif.message}"`}
+                  >
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Supprimer
+                  </button>
                 </div>
               </li>
             );

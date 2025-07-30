@@ -25,13 +25,15 @@ export interface Partner {
 export interface Company {
   id: number;
   name: string;
-  broker?: Broker | null;
+  brokers?: Broker[];
+  broker_ids?: number[];
   contact_email: string;
 }
 
 export interface Broker {
   id: number;
   name: string;
+  email?: string;
   companyId?: number;
 }
 

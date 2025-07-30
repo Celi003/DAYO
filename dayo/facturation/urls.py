@@ -20,6 +20,7 @@ router.register(r'notifications', NotificationViewSet)
 
 urlpatterns = [
     path('', HelloView.as_view(), name='root'),               # ← Accueil = Bonjour !
+    path('users/create_subadmin/', CreateSubadminView.as_view(), name='create_subadmin'),  # ← Nouvelle vue pour créer des sous-admins (AVANT le router)
     path('', include(router.urls)),                       # ← API routes à la racine
     path('login/', LoginView.as_view(), name='login'),
     path('register/', RegisterView.as_view(), name='register'),

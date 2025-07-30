@@ -22,16 +22,16 @@ class ProviderSerializer(serializers.ModelSerializer):
 class BrokerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Broker
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'email']
 
 
 class CompanySerializer(serializers.ModelSerializer):
-    broker = BrokerSerializer(read_only=True)
-    broker_id = serializers.PrimaryKeyRelatedField(queryset=Broker.objects.all(), source='broker', write_only=True, required=False, allow_null=True)
+    brokers = BrokerSerializer(many=True, read_only=True)
+    broker_ids = serializers.PrimaryKeyRelatedField(queryset=Broker.objects.all(), source='brokers', write_only=True, many=True, required=False)
 
     class Meta:
         model = Company
-        fields = ['id', 'name', 'broker', 'broker_id', 'contact_email']
+        fields = ['id', 'name', 'brokers', 'broker_ids', 'contact_email']
 
 
 class PaymentSerializer(serializers.ModelSerializer):

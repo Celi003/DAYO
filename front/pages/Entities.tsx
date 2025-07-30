@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import {
   getBrokers,
   getCompanies,
@@ -14,6 +16,7 @@ import { useApi } from "../services/api";
 import ConfirmModal from "../components/Modal";
 
 const Entities: React.FC = () => {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<"brokers" | "companies">("brokers");
   const [brokers, setBrokers] = useState<any[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
@@ -113,6 +116,15 @@ const Entities: React.FC = () => {
           </div>
         </div>
       </ConfirmModal>
+      <div className="flex items-center gap-4 mb-6">
+        <button
+          onClick={() => navigate('/admin')}
+          className="flex items-center gap-2 text-slate-600 hover:text-slate-800 font-medium"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Retour à l'administration
+        </button>
+      </div>
       <h1 className="text-3xl font-bold mb-6">Gestion des entités</h1>
       <div className="flex border-b">
         <button
@@ -187,12 +199,15 @@ const EntityTable: React.FC<{
   const getFields = () => {
     switch (type) {
       case "Courtier":
-        return { name: "text" };
+        return { 
+          name: "text",
+          email: "email"
+        };
       case "Compagnie":
         return {
           name: "text",
           contact_email: "email",
-          broker: "select_broker",
+          broker_ids: "select_multiple_brokers",
         };
       default:
         return {};
@@ -204,6 +219,10 @@ const EntityTable: React.FC<{
   const validate = () => {
     const errs: Record<string, string> = {};
     for (const k of fieldNames) {
+      if (k === "broker_ids") {
+        // broker_ids is optional for companies
+        continue;
+      }
       if (!form[k] || form[k].toString().trim() === "") {
         errs[k] = "Ce champ est requis";
       }
@@ -224,8 +243,15 @@ const EntityTable: React.FC<{
     if (!validate()) return;
     let dataToSend = { ...form };
     if (type === "Compagnie") {
-      dataToSend = { ...form, broker_id: form.broker };
-      delete dataToSend.broker;
+      // Convert broker_ids array to the format expected by the API
+      if (form.broker_ids && Array.isArray(form.broker_ids)) {
+        dataToSend.broker_ids = form.broker_ids;
+      } else if (form.broker_ids) {
+        // If it's a single value, convert to array
+        dataToSend.broker_ids = [form.broker_ids];
+      } else {
+        dataToSend.broker_ids = [];
+      }
     }
     if (editId) onUpdate(editId, dataToSend);
     else onAdd(dataToSend);
@@ -262,13 +288,13 @@ const EntityTable: React.FC<{
   const handleStartEdit = (item: any) => {
     setEditId(item.id);
     const formData: any = {};
-    // For company, broker is an object in data, but form needs broker id
+    // For company, brokers is an array of objects in data, but form needs broker_ids array
     if (
       type === "Compagnie" &&
-      item.broker &&
-      typeof item.broker === "object"
+      item.brokers &&
+      Array.isArray(item.brokers)
     ) {
-      formData.broker = item.broker.id;
+      formData.broker_ids = item.brokers.map((broker: any) => broker.id);
     }
     setForm({ ...item, ...formData });
   };
@@ -296,6 +322,24 @@ const EntityTable: React.FC<{
                 }`}
               >
                 <option value="">Choisir...</option>
+                {brokers?.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            ) : (fields as any)[k] === "select_multiple_brokers" ? (
+              <select
+                multiple
+                value={Array.isArray(form[k]) ? form[k] : []}
+                onChange={(e) => {
+                  const selectedOptions = Array.from(e.target.selectedOptions, option => parseInt(option.value));
+                  setForm({ ...form, [k]: selectedOptions });
+                }}
+                className={`p-2 border rounded-md min-h-[80px] ${
+                  errors[k] ? "border-red-500" : "border-slate-300"
+                }`}
+              >
                 {brokers?.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -374,7 +418,7 @@ const EntityTable: React.FC<{
                 ))}
               {type === "Compagnie" && (
                 <th className="p-3 text-left text-sm font-semibold text-slate-600">
-                  Courtier
+                  Courtiers
                 </th>
               )}
               <th className="p-3 text-left text-sm font-semibold text-slate-600">
@@ -393,7 +437,12 @@ const EntityTable: React.FC<{
                     </td>
                   ))}
                 {type === "Compagnie" && (
-                  <td className="p-3">{item.broker?.name || "-"}</td>
+                  <td className="p-3">
+                    {item.brokers && item.brokers.length > 0 
+                      ? item.brokers.map((broker: any) => broker.name).join(", ")
+                      : "-"
+                    }
+                  </td>
                 )}
                 <td className="p-3 flex gap-2 justify-center">
                   <button

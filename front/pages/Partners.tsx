@@ -34,19 +34,19 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [invoicesData, companiesData, brokersData] = await Promise.all([
-          getInvoices(),
-          getCompanies(),
-          getBrokers()
-        ]);
+      const [invoicesData, companiesData, brokersData] = await Promise.all([
+        getInvoices(),
+        getCompanies(),
+        getBrokers()
+      ]);
         
-        setInvoices(invoicesData);
-        setCompanies(companiesData);
-        setBrokers(brokersData);
+      setInvoices(invoicesData);
+      setCompanies(companiesData);
+      setBrokers(brokersData);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
-        setLoading(false);
+      setLoading(false);
       }
     };
     fetchData();
@@ -97,7 +97,7 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
 
     // Calculer les statistiques pour chaque partenaire
     if (Array.isArray(invoices)) {
-      invoices.forEach(invoice => {
+    invoices.forEach(invoice => {
         if (!invoice || !invoice.id) return;
         
         const invoiceAmount = Number(invoice.billed_amount) || 0;
@@ -124,15 +124,15 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
             brokerPartner.totalPaid += paid;
             brokerPartner.totalRejected += rejected;
           }
-        }
-      });
+      }
+    });
     }
 
     // Calculer le reste à régler
     partners.forEach((partner) => {
       partner.outstanding = partner.totalInvoiced - partner.totalPaid - partner.totalRejected;
     });
-    
+
     // Par défaut, afficher tous les partenaires, même ceux sans factures
     let result = partners;
     

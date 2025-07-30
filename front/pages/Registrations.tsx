@@ -1,11 +1,12 @@
 import React, { useEffect } from "react";
-import { User } from "../types";
+import { User, Invoice } from "../types";
 import InvoiceDetailModal from "../components/InvoiceDetailModal";
 import useRegistrations from "@/hooks/useRegistrations";
 import { AddInvoiceForm } from "@/components/registrations/form";
 import { InvoiceTable } from "@/components/registrations/table";
 import { ReminderModal } from "@/components/registrations/modals";
 import { Download, FileSpreadsheet, FileText, Upload } from "lucide-react";
+import { deleteInvoice, useApi } from "@/services/api";
 
 interface RegistrationsProps {
   user: User;
@@ -40,6 +41,24 @@ const Registrations: React.FC<RegistrationsProps> = ({
     setInvoiceForDetails,
     resetFilters,
   } = useRegistrations(selectedYear);
+
+  const { call } = useApi();
+  
+  const handleDeleteInvoice = async (invoice: Invoice) => {
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer la facture ${invoice.invoice_number} ?`)) {
+      try {
+        console.log('Attempting to delete invoice:', invoice.id);
+        const result = await call(() => deleteInvoice(String(invoice.id)), "Facture supprimée");
+        console.log('Delete result:', result);
+        if (result && result.success) {
+          // Recharger les factures après suppression
+          window.location.reload();
+        }
+      } catch (error) {
+        console.error('Error deleting invoice:', error);
+      }
+    }
+  };
 
   const partnerId = partners.find((p) => p.user.id === user.id)?.id ?? null;
   return (
@@ -113,6 +132,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
           user={user}
           onDetails={setInvoiceForDetails}
           onReminder={setInvoiceForReminder}
+          onDelete={handleDeleteInvoice}
           loading={loading}
           // Filtres synchronisés
           search={search}
@@ -145,6 +165,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
           }
           onClose={() => setInvoiceForDetails(null)}
           onUpdate={handleUpdateInvoice}
+          userRole={user.role}
         />
       )}
     </React.Fragment>

@@ -14,6 +14,7 @@ import {
   Eye,
   FileText,
   Search,
+  Trash2,
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 
@@ -24,6 +25,7 @@ export const InvoiceTable: React.FC<{
   user: User;
   onDetails: (inv: Invoice) => void;
   onReminder: (inv: Invoice) => void;
+  onDelete?: (inv: Invoice) => void;
   loading: boolean;
   search: string;
   setSearch: (search: string) => void;
@@ -40,6 +42,7 @@ export const InvoiceTable: React.FC<{
   user,
   onDetails,
   onReminder,
+  onDelete,
   loading,
   search,
   setSearch,
@@ -264,6 +267,15 @@ export const InvoiceTable: React.FC<{
                         >
                           <Bell className="w-3 h-3 md:hidden" />
                           <span className="hidden md:inline">Relance</span>
+                        </button>
+                      )}
+                      {user.role === "admin" && onDelete && (
+                        <button
+                          onClick={() => onDelete(invoice)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3 md:hidden" />
+                          <span className="hidden md:inline">Supprimer</span>
                         </button>
                       )}
                     </div>

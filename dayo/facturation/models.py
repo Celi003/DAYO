@@ -23,6 +23,7 @@ class UserProfile(models.Model):
     subscription_status = models.CharField(max_length=50, blank=True, null=True)
     subscription_expiry = models.DateTimeField(blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
+    permissions = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return f"{self.user.username} - {self.role}"
@@ -38,13 +39,14 @@ class Provider(models.Model):
 
 class Broker(models.Model):
     name = models.CharField(max_length=255)
+    email = models.EmailField(blank=True, null=True)
 
     def __str__(self):
         return self.name
 
 class Company(models.Model):
     name = models.CharField(max_length=255)
-    broker = models.ForeignKey(Broker, on_delete=models.CASCADE, related_name='companies', null=True, blank=True)
+    brokers = models.ManyToManyField(Broker, related_name='companies', blank=True)
     contact_email = models.EmailField(blank=True, null=True)
 
     def __str__(self):
@@ -119,8 +121,8 @@ class Notification(models.Model):
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     # Optionally link to an invoice, payment, etc.
-    invoice = models.ForeignKey('Invoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='notifications')
-    payment = models.ForeignKey('Payment', on_delete=models.SET_NULL, null=True, blank=True, related_name='notifications')
+    invoice = models.ForeignKey('Invoice', on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
+    payment = models.ForeignKey('Payment', on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
 
     def __str__(self):
         return f"{self.user.username} - {self.notif_type} - {self.message[:30]}..."

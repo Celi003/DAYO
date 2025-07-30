@@ -20,6 +20,28 @@ export const AddInvoiceForm: React.FC<{
   const { notify } = useNotification();
   const { call } = useApi();
 
+  // Filtrer les courtiers selon la compagnie sélectionnée
+  const filteredBrokers = useMemo(() => {
+    if (!companyId) {
+      // Si aucune compagnie n'est sélectionnée, afficher tous les courtiers
+      return brokers;
+    }
+    
+    // Si une compagnie est sélectionnée, afficher seulement ses courtiers
+    const selectedCompany = companies.find(c => c.id === companyId);
+    if (!selectedCompany || !selectedCompany.brokers) {
+      return [];
+    }
+    
+    return selectedCompany.brokers;
+  }, [companyId, companies, brokers]);
+
+  // Réinitialiser le courtier sélectionné quand la compagnie change
+  const handleCompanyChange = (newCompanyId: number | null) => {
+    setCompanyId(newCompanyId);
+    setBrokerId(null); // Réinitialiser le courtier
+  };
+
 
 
   const validate = () => {
@@ -121,7 +143,7 @@ export const AddInvoiceForm: React.FC<{
             id="company"
             value={companyId ?? ""}
             onChange={(e) =>
-              setCompanyId(e.target.value ? Number(e.target.value) : null)
+              handleCompanyChange(e.target.value ? Number(e.target.value) : null)
             }
             className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
           >
@@ -152,7 +174,7 @@ export const AddInvoiceForm: React.FC<{
             className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">Aucun</option>
-            {brokers.map((b) => (
+            {filteredBrokers.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>

@@ -53,7 +53,7 @@ export const login = async (username: string, password: string) => {
 export const registerUser = async (username: string, password: string, _name?: string, email?: string) => {
   const res = await fetch(`${API_BASE}/register/`, {
     method: 'POST',
-    headers: getHeaders(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password, email })
   });
   if (!res.ok) {
@@ -329,6 +329,20 @@ export const generateReclamationLetter = async (invoiceId: string) => {
   return await res.json();
 };
 
+// DELETE INVOICE
+export const deleteInvoice = async (invoiceId: string) => {
+  const res = await fetch(`${API_BASE}/invoices/${invoiceId}/`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la suppression de la facture';
+    throw new Error(errorMessage);
+  }
+  return { success: true };
+};
+
 // CRUD PROVIDERS
 export const createProvider = async (data: any) => {
   const res = await fetch(`${API_BASE}/providers/`, {
@@ -483,6 +497,24 @@ export async function patchNotification(id: number, is_read: boolean) {
   return res.json();
 }
 
+export async function clearAllNotifications() {
+  const res = await fetch(`${API_BASE}/notifications/clear_all/`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Erreur lors de la suppression des notifications');
+  return res.json();
+}
+
+export async function deleteNotification(id: number) {
+  const res = await fetch(`${API_BASE}/notifications/${id}/`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Erreur lors de la suppression de la notification');
+  return res.json();
+}
+
 export const activateProviderAccount = async (userId: string, duration: string) => {
   const res = await fetch(`${API_BASE}/users/${userId}/activate_account/`, {
     method: 'POST',
@@ -490,10 +522,36 @@ export const activateProviderAccount = async (userId: string, duration: string) 
     body: JSON.stringify({ duration })
   });
   if (!res.ok) {
-    let errorMsg = 'Erreur lors de l’activation du compte';
+    let errorMsg = 'Erreur lors de l\'activation du compte';
     if (res.headers.get('content-type')?.includes('application/json')) {
       const data = await res.json();
       errorMsg = data.error || errorMsg;
+    }
+    throw new Error(errorMsg);
+  }
+  return await res.json();
+};
+
+export const createSubadmin = async (data: {
+  username: string;
+  password: string;
+  role: string;
+  permissions: string[];
+}) => {
+  const res = await fetch(`${API_BASE}/users/create_subadmin/`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      username: data.username,
+      password: data.password,
+      permissions: data.permissions
+    })
+  });
+  if (!res.ok) {
+    let errorMsg = 'Erreur lors de la création du sous-admin';
+    if (res.headers.get('content-type')?.includes('application/json')) {
+      const errorData = await res.json();
+      errorMsg = errorData.error || errorMsg;
     }
     throw new Error(errorMsg);
   }

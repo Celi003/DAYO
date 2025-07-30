@@ -80,6 +80,14 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
     const allTransactions: Transaction[] = [];
 
     invoices.forEach((invoice: Invoice) => {
+      // Ne traiter que les factures qui ont des paiements ou des rejets
+      const hasPayments = invoice.payments && invoice.payments.length > 0;
+      const hasRejections = invoice.rejections && invoice.rejections.length > 0;
+      
+      if (!hasPayments && !hasRejections) {
+        return; // Ignorer les factures sans paiements ni rejets
+      }
+
       const isCompany = !!invoice.company?.id;
       const partnerId: number | undefined = isCompany
         ? invoice.company?.id
@@ -101,11 +109,9 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
         partnerName = brokerName;
       }
 
-      invoice.payments?.forEach((payment) => {
-        console.log("Adding payment transaction", {
-          partnerName,
-          partnerId,
-        });
+      // Ajouter les paiements
+      if (hasPayments && invoice.payments) {
+        invoice.payments.forEach((payment) => {
         allTransactions.push({
           id: `payment-${invoice.id}-${payment.id}`,
           date: payment.payment_date,
@@ -116,16 +122,15 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
           type: "Paiement",
           amount: payment.amount,
           providerName: invoice.provider.name,
-          companyName,
-          brokerName,
-        });
+            companyName,
+            brokerName,
       });
-
-      invoice.rejections?.forEach((rejection) => {
-        console.log("Adding payment rejection", {
-          partnerName,
-          partnerId,
         });
+      }
+
+      // Ajouter les rejets
+      if (hasRejections && invoice.rejections) {
+        invoice.rejections.forEach((rejection) => {
         allTransactions.push({
           id: `rejection-${invoice.id}-${rejection.id}`,
           date: rejection.rejection_date,
@@ -137,10 +142,11 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
           amount: rejection.rejected_amount,
           reason: rejection.rejection_reason,
           providerName: invoice.provider.name,
-          companyName,
-          brokerName,
+            companyName,
+            brokerName,
+          });
         });
-      });
+      }
     });
 
     return allTransactions;

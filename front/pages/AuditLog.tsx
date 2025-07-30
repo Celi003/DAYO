@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { getAuditLog } from '../services/api';
 import { useApi } from '../services/api';
 import { useNotification } from '../components/NotificationContext';
 
 const AuditLog: React.FC = () => {
+  const navigate = useNavigate();
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { call } = useApi();
@@ -21,6 +24,15 @@ const AuditLog: React.FC = () => {
 
   return (
     <div className="p-8">
+      <div className="flex items-center gap-4 mb-6">
+        <button
+          onClick={() => navigate('/admin')}
+          className="flex items-center gap-2 text-slate-600 hover:text-slate-800 font-medium"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Retour à l'administration
+        </button>
+      </div>
       <h1 className="text-3xl font-bold mb-6">Historique des actions</h1>
       {loading ? <div>Chargement...</div> : logs.length === 0 ? <div className="text-slate-500">Aucune action trouvée.</div> : (
         <table className="min-w-full">

@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { getPaymentDetails } from '../services/api';
 import { useNotification } from '../components/NotificationContext';
 
 const PaymentDetails: React.FC = () => {
+  const navigate = useNavigate();
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth()+1);
   const [payments, setPayments] = useState<any[]>([]);
@@ -26,6 +29,15 @@ const PaymentDetails: React.FC = () => {
   };
   return (
     <div className="p-8">
+      <div className="flex items-center gap-4 mb-6">
+        <button
+          onClick={() => navigate('/admin')}
+          className="flex items-center gap-2 text-slate-600 hover:text-slate-800 font-medium"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Retour à l'administration
+        </button>
+      </div>
       <h1 className="text-3xl font-bold mb-6">Détails des paiements</h1>
       <div className="flex gap-4 mb-4">
         <div className="flex flex-col">
