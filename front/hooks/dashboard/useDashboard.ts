@@ -126,23 +126,39 @@ export function useDashboard(
 
   const partnerRevenueData = useMemo(() => {
     const data: { [key: string]: number } = {};
+    
+    if (filteredInvoices.length === 0) {
+      return [];
+    }
+    
     filteredInvoices.forEach((inv) => {
       const partner = partners.find((p) => p.id === inv.provider.id);
+      
       if (partner) {
-        data[partner.name] = (data[partner.name] || 0) + inv.billed_amount;
+        const currentAmount = data[partner.name] || 0;
+        const invoiceAmount = Number(inv.billed_amount) || 0;
+        data[partner.name] = currentAmount + invoiceAmount;
       }
     });
-    return Object.entries(data)
+    
+    const result = Object.entries(data)
       .map(([name, value]) => ({ name, value }))
       .filter((d) => d.value > 0);
-  }, [filteredInvoices, partners]);
+    
+    return result;
+  }, [filteredInvoices, partners, filterPartner, filterStatus]);
 
   const partnerPaymentStatusData = useMemo(() => {
     const partnerData: Record<string, any> = {};
 
+    if (filteredInvoices.length === 0) {
+      return [];
+    }
+
     filteredInvoices.forEach((invoice) => {
       const partnerName =
-        partners.find((p) => p.id === invoice.broker?.id)?.name || "Inconnu";
+        partners.find((p) => p.id === invoice.provider.id)?.name || "Inconnu";
+      
       if (!partnerData[partnerName]) {
         partnerData[partnerName] = {
           name: partnerName,
@@ -152,18 +168,18 @@ export function useDashboard(
           outstanding: 0,
         };
       }
-      const paid = invoice.payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
-      const rejected =
-        invoice.rejections?.reduce((sum, r) => sum + r.rejected_amount, 0) || 0;
+      
+      const billedAmount = Number(invoice.billed_amount) || 0;
+      const paid = Number(invoice.payments?.reduce((sum, p) => sum + p.amount, 0)) || 0;
+      const rejected = Number(invoice.rejections?.reduce((sum, r) => sum + r.rejected_amount, 0)) || 0;
 
-      partnerData[partnerName].total += invoice.billed_amount;
+      partnerData[partnerName].total += billedAmount;
       partnerData[partnerName].paid += paid;
       partnerData[partnerName].rejected += rejected;
-      partnerData[partnerName].outstanding +=
-        invoice.billed_amount - paid - rejected;
+      partnerData[partnerName].outstanding += billedAmount - paid - rejected;
     });
 
-    return Object.values(partnerData)
+    const result = Object.values(partnerData)
       .filter((p) => p.total > 0)
       .map((p) => ({
         ...p,
@@ -171,7 +187,9 @@ export function useDashboard(
         rejectedPercent: (p.rejected / p.total) * 100,
         outstandingPercent: (p.outstanding / p.total) * 100,
       }));
-  }, [filteredInvoices, partners]);
+    
+    return result;
+  }, [filteredInvoices, partners, filterPartner, filterStatus]);
 
   return {
     invoices,

@@ -90,11 +90,36 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
   }, [subadminMode, subadminUser]);
 
   const handleToggleActive = async (user: User) => {
+    const newActiveStatus = !user.isActive;
+    
+    // Si on désactive le compte, annuler l'abonnement
+    const updateData: any = { isActive: newActiveStatus };
+    
+    if (!newActiveStatus) {
+      // Désactivation : annuler l'abonnement
+      updateData.subscription_status = "CANCELLED";
+      updateData.subscription_expiry = null;
+    }
+    
+    console.log('DEBUG: Sending update data:', updateData);
+    console.log('DEBUG: User being updated:', user);
+    
     await call(
-      () => updateUser(String(user.id), { isActive: !user.isActive }),
-      "Statut utilisateur mis à jour"
+      () => updateUser(String(user.id), updateData),
+      newActiveStatus ? "Compte activé" : "Compte désactivé et abonnement annulé"
     );
     await fetchUsers();
+  };
+
+  const formatDateForInput = (dateString: string | null | undefined): string => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      return date.toISOString().split('T')[0]; // Format yyyy-MM-dd
+    } catch (error) {
+      console.error('Erreur de formatage de date:', error);
+      return "";
+    }
   };
 
   const handleDateChange = (userId: number, date: string) => {
@@ -283,7 +308,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                   <td className="p-4 text-slate-600">
                     <input
                       type="date"
-                      value={user.subscriptionEndDate || ""}
+                      value={formatDateForInput(user.subscriptionEndDate)}
                       onChange={(e) =>
                         handleDateChange(user.id, e.target.value)
                       }
@@ -323,16 +348,22 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                           </button>
                         </>
                       ) : (
-                        <button
-                          onClick={() => setActivationUserId(user.id)}
-                          className={`text-xs font-semibold py-1 px-3 rounded-full ${
-                            user.isActive
-                              ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
-                              : "bg-green-100 text-green-800 hover:bg-green-200"
-                          }`}
-                        >
-                          {user.isActive ? "Désactiver" : "Activer"}
-                        </button>
+                        <div className="space-x-2">
+                          <button
+                            onClick={() => setActivationUserId(user.id)}
+                            className="text-xs bg-green-100 text-green-800 font-semibold py-1 px-3 rounded-full hover:bg-green-200"
+                          >
+                            Activer
+                          </button>
+                          {user.isActive && (
+                            <button
+                              onClick={() => handleToggleActive(user)}
+                              className="text-xs bg-yellow-100 text-yellow-800 font-semibold py-1 px-3 rounded-full hover:bg-yellow-200"
+                            >
+                              Désactiver
+                            </button>
+                          )}
+                        </div>
                       )
                     ) : (
                       <button

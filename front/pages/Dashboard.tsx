@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Suspense } from "react";
+import React, { useEffect, useState, Suspense, useMemo } from "react";
 import { User } from "../types";
 import { RevenueDetailsModalContent, DistributionDetailsModalContent, StatusDetailsModalContent } from "../components/dashboard/modals";
 import Modal from "../components/Modal";
@@ -8,6 +8,9 @@ import { formatCurrency } from "@/utils/helpers";
 import { useDashboardCharts } from "../hooks/dashboard/useCharts";
 import { DBarChart } from "../components/dashboard/barChart";
 import { DPieChart } from "../components/dashboard/pieChart";
+import { LineChart } from "../components/dashboard/lineChart";
+import { DonutChart } from "../components/dashboard/donutChart";
+import { StackedBarChart } from "../components/dashboard/stackedBarChart";
 
 interface DashboardProps {
   user: User;
@@ -24,7 +27,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const [filterMonth, setFilterMonth] = useState<number | null>(null);
   const [filterQuarter, setFilterQuarter] = useState<number | null>(null);
   const monthNames = [
-    "Janv.",
+    "Jan.",
     "Févr.",
     "Mars",
     "Avril",
@@ -55,6 +58,92 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const { stackedBarData } = useDashboardCharts(
     filteredInvoices
   )
+
+  // Génération des données d'évolution du chiffre d'affaires basées sur les vraies données
+  const revenueEvolutionData = useMemo(() => {
+    const monthlyData = new Array(12).fill(0).map((_, index) => ({
+      month: monthNames[index],
+      revenue: 0
+    }));
+
+    filteredInvoicesForYear.forEach(invoice => {
+      const month = new Date(invoice.deposit_date).getMonth();
+      monthlyData[month].revenue += Number(invoice.billed_amount) || 0;
+    });
+
+    return monthlyData;
+  }, [filteredInvoicesForYear, monthNames]);
+
+  // Génération des données de répartition par partenaire basées sur les vraies données
+  const partnerDistributionData = useMemo(() => {
+    if (partnerRevenueData.length === 0) return [];
+    
+    const total = partnerRevenueData.reduce((sum, item) => sum + item.value, 0);
+    const colors = ["#3b82f6", "#f59e0b", "#ef4444", "#10b981", "#6366f1"];
+    
+    const result = partnerRevenueData
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5)
+      .map((item, index) => ({
+        name: item.name,
+        value: Math.round((item.value / total) * 100),
+        color: colors[index % colors.length]
+      }));
+    
+    return result;
+  }, [partnerRevenueData]);
+
+  // Génération des données des meilleurs partenaires basées sur les vraies données
+  const topPartnersData = useMemo(() => {
+    if (partnerRevenueData.length === 0) return [];
+    
+    const maxAmount = Math.max(...partnerRevenueData.map(p => p.value));
+    const colors = ["#10b981", "#ef4444", "#f59e0b", "#3b82f6"];
+    
+    const result = partnerRevenueData
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 4)
+      .map((item, index) => ({
+        name: item.name,
+        amount: item.value,
+        color: colors[index % colors.length]
+      }));
+    
+    return result;
+  }, [partnerRevenueData]);
+
+  // Génération des données d'état des paiements basées sur les vraies données
+  const paymentStatusData = useMemo(() => {
+    if (partnerPaymentStatusData.length === 0) return [];
+    
+    const result = partnerPaymentStatusData
+      .slice(0, 3)
+      .map(item => ({
+        partner: item.name,
+        total: item.total || 0,
+        paid: item.paid || 0,
+        pending: item.outstanding || 0,
+        rejected: item.rejected || 0
+      }));
+    
+    return result;
+  }, [partnerPaymentStatusData]);
+
+  // Génération de la deuxième liste des meilleurs partenaires basée sur les vraies données
+  const topPartnersData2 = useMemo(() => {
+    if (partnerRevenueData.length === 0) return [];
+    
+    const result = partnerRevenueData
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 4)
+      .map(item => ({
+        name: item.name,
+        amount: item.value
+      }));
+    
+    return result;
+  }, [partnerRevenueData]);
+
   useEffect(() => {
     if (availableYears.length > 0 && !availableYears.includes(selectedYear)) {
       setSelectedYear(availableYears[0]);
@@ -79,6 +168,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         </div>
       </div>
 
+      {/* KPIs - Première rangée */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
         <StatCard
           title="Total facturé"
@@ -185,8 +275,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
               previous={prevStats.outstanding}
             />
           }
+          extraIcon={
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#6b7280"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="absolute top-2 right-2"
+            >
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          }
         />
       </div>
+
+      {/* Filtres */}
       <div className="bg-white p-4 rounded-lg shadow-sm mb-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
           <select
@@ -231,54 +339,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             <option value="enAttente">En attente</option>
             <option value="rejeté">Rejeté</option>
           </select>
-          <select
-            value={filterMonth !== null ? filterMonth : ""}
-            onChange={(e) =>
-              setFilterMonth(
-                e.target.value === "" ? null : Number(e.target.value)
-              )
-            }
-            className="w-full p-2 border border-slate-300 rounded-md shadow-sm bg-white"
-          >
-            <option value="">Tous les mois</option>
-            {monthNames.map((m, i) => (
-              <option key={i} value={i}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <select
-            value={filterQuarter !== null ? filterQuarter : ""}
-            onChange={(e) =>
-              setFilterQuarter(
-                e.target.value === "" ? null : Number(e.target.value)
-              )
-            }
-            className="w-full p-2 border border-slate-300 rounded-md shadow-sm bg-white"
-          >
-            <option value="">Tous les trimestres</option>
-            <option value={0}>T1 (Janv.-Mars)</option>
-            <option value={1}>T2 (Avr.-Juin)</option>
-            <option value={2}>T3 (Juil.-Sept.)</option>
-            <option value={3}>T4 (Oct.-Déc.)</option>
-          </select>
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex flex-wrap gap-2">
             {(filterPartner ||
               filterType ||
-              filterStatus ||
-              filterMonth !== null ||
-              filterQuarter !== null) && (
+              filterStatus) && (
               <button
                 className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md"
                 onClick={() => {
                   setFilterPartner("");
                   setFilterType("");
                   setFilterStatus("");
-                  setFilterMonth(null);
-                  setFilterQuarter(null);
                 }}
               >
                 Réinitialiser les filtres
@@ -301,75 +374,165 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
           </div>
         </div>
       </div>
+
+      
+
+      {/* Deuxième rangée - Graphiques et Top partenaires */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <DBarChart
-          data={stackedBarData}
-          selectedYear={selectedYear}
-          setFilterMonth={setFilterMonth}
-        />
+        {/* Évolution du chiffre d'affaires */}
         <div className="bg-white p-6 rounded-lg shadow-sm">
           <h2 className="text-lg font-semibold mb-4">
-            Top partenaires ({selectedYear}){" "}
-            <span
-              className="ml-2 text-slate-400"
-              title="Partenaires ayant généré le plus de chiffre d'affaires."
-            >
-              ?
-            </span>
+            Évolution du chiffre d'affaires
           </h2>
-          {[...partnerRevenueData].sort((a, b) => b.value - a.value).slice(0, 5)
-            .length > 0 ? (
-            <ul className="space-y-3">
-              {[...partnerRevenueData]
-                .sort((a, b) => b.value - a.value)
-                .slice(0, 5)
-                .map((p) => {
-                  const partnerObj = partners.find((pt) => pt.name === p.name);
-                  return (
-                    <li
-                      key={p.name}
-                      className="flex justify-between items-center"
-                    >
-                      <button
-                        className="text-sm font-medium text-slate-700 hover:underline"
-                        onClick={() =>
-                          partnerObj && setFilterPartner(String(partnerObj.id))
-                        }
-                        aria-label={`Filtrer sur le partenaire ${p.name}`}
-                      >
-                        {p.name}
-                      </button>
-                      <span className="text-sm font-semibold bg-slate-100 px-2 py-1 rounded">
-                        {formatCurrency(p.value)}
-                      </span>
-                    </li>
-                  );
-                })}
-            </ul>
+          {revenueEvolutionData.length > 0 ? (
+            <>
+              <LineChart data={revenueEvolutionData} />
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => setOpenModal("revenue")}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                >
+                  Voir détails
+                </button>
+              </div>
+            </>
           ) : (
-            <div className="flex items-center justify-center h-full text-slate-500">
-              Aucune donnée pour cette année.
+            <div className="flex items-center justify-center h-32 text-slate-500">
+              Aucune donnée disponible pour l'évolution du chiffre d'affaires
+            </div>
+          )}
+        </div>
+
+        {/* Répartition du chiffre d'affaires par partenaire */}
+        <div className="bg-white p-6 rounded-lg shadow-sm">
+          <h2 className="text-lg font-semibold mb-4">
+            Répartition du chiffre d'affaires par partenaire
+          </h2>
+          {partnerDistributionData.length > 0 ? (
+            <>
+              <DonutChart data={partnerDistributionData} />
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => setOpenModal("distribution")}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                >
+                  Voir détails
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-32 text-slate-500">
+              Aucune donnée disponible pour la répartition par partenaire
             </div>
           )}
         </div>
       </div>
+
+      {/* Troisième rangée - Top partenaires avec barres */}
       <div className="bg-white p-6 rounded-lg shadow-sm mb-8">
         <h2 className="text-lg font-semibold mb-4">
-          Répartition par partenaire ({selectedYear}){" "}
-          <span
-            className="ml-2 text-slate-400"
-            title="Répartition du chiffre d'affaires par partenaire."
-          >
-            ?
-          </span>
+          Meilleurs partenaires
         </h2>
-        <DPieChart
-          data={partnerRevenueData}
-          setFilterPartner={setFilterPartner}
-          partners={partners}
-        />
+        {topPartnersData.length > 0 ? (
+          <>
+            <div className="space-y-3">
+              {topPartnersData.map((partner, index) => (
+                <div key={partner.name} className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-700">{partner.name}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-32 bg-slate-200 rounded-full h-2">
+                      <div 
+                        className="h-2 rounded-full"
+                        style={{ 
+                          width: `${(partner.amount / Math.max(...topPartnersData.map(p => p.amount))) * 100}%`,
+                          backgroundColor: partner.color 
+                        }}
+                      ></div>
+                    </div>
+                    <span className="text-sm font-semibold bg-slate-100 px-2 py-1 rounded">
+                      {formatCurrency(partner.amount)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 text-center">
+              <button
+                onClick={() => setOpenModal("partners")}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+              >
+                Voir détails
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-center h-32 text-slate-500">
+            Aucune donnée disponible pour les meilleurs partenaires
+          </div>
+        )}
       </div>
 
+      {/* Quatrième rangée - État des paiements et Top partenaires */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        {/* État des paiements par partenaire */}
+        <div className="bg-white p-6 rounded-lg shadow-sm">
+          <h2 className="text-lg font-semibold mb-4">
+            État des paiements par partenaire
+          </h2>
+          {paymentStatusData.length > 0 ? (
+            <>
+              <StackedBarChart data={paymentStatusData} />
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => setOpenModal("status")}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                >
+                  Voir détails
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-32 text-slate-500">
+              Aucune donnée disponible pour l'état des paiements
+            </div>
+          )}
+        </div>
+
+        {/* Deuxième liste des meilleurs partenaires */}
+        <div className="bg-white p-6 rounded-lg shadow-sm">
+          <h2 className="text-lg font-semibold mb-4">
+            Meilleurs partenaires
+          </h2>
+          {topPartnersData2.length > 0 ? (
+            <>
+              <div className="space-y-3">
+                {topPartnersData2.map((partner) => (
+                  <div key={partner.name} className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-slate-700">{partner.name}</span>
+                    <span className="text-sm font-semibold bg-slate-100 px-2 py-1 rounded">
+                      {formatCurrency(partner.amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => setOpenModal("partners2")}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                >
+                  Voir détails
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-32 text-slate-500">
+              Aucune donnée disponible pour les meilleurs partenaires
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modales */}
       <Suspense
         fallback={
           <div className="flex items-center justify-center h-full text-slate-500">
@@ -380,7 +543,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         <Modal
           isOpen={openModal === "revenue"}
           onClose={() => setOpenModal(null)}
-          title={`Détail du chiffre d'affaires pour ${selectedYear}`}
+          title="Détail de l'évolution du chiffre d'affaires"
         >
           <RevenueDetailsModalContent
             data={filteredInvoicesForYear}
@@ -398,7 +561,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         <Modal
           isOpen={openModal === "distribution"}
           onClose={() => setOpenModal(null)}
-          title={`Détail de la répartition par partenaire (${selectedYear})`}
+          title="Détail de la répartition par partenaire"
         >
           <DistributionDetailsModalContent data={partnerRevenueData} />
         </Modal>
@@ -413,9 +576,59 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         <Modal
           isOpen={openModal === "status"}
           onClose={() => setOpenModal(null)}
-          title={`Détail de l'état des paiements par partenaire (${selectedYear})`}
+          title="Détail de l'état des paiements par partenaire"
         >
           <StatusDetailsModalContent data={partnerPaymentStatusData} />
+        </Modal>
+      </Suspense>
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center h-full text-slate-500">
+            Chargement de la modale...
+          </div>
+        }
+      >
+        <Modal
+          isOpen={openModal === "partners"}
+          onClose={() => setOpenModal(null)}
+          title="Détail des meilleurs partenaires"
+        >
+          <div className="p-4">
+            <h3 className="text-lg font-semibold mb-4">Top partenaires par chiffre d'affaires</h3>
+            <div className="space-y-3">
+              {topPartnersData.map((partner) => (
+                <div key={partner.name} className="flex justify-between items-center p-3 bg-slate-50 rounded">
+                  <span className="font-medium">{partner.name}</span>
+                  <span className="font-semibold">{formatCurrency(partner.amount)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      </Suspense>
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center h-full text-slate-500">
+            Chargement de la modale...
+          </div>
+        }
+      >
+        <Modal
+          isOpen={openModal === "partners2"}
+          onClose={() => setOpenModal(null)}
+          title="Détail des meilleurs partenaires"
+        >
+          <div className="p-4">
+            <h3 className="text-lg font-semibold mb-4">Top partenaires par performance</h3>
+            <div className="space-y-3">
+              {topPartnersData2.map((partner) => (
+                <div key={partner.name} className="flex justify-between items-center p-3 bg-slate-50 rounded">
+                  <span className="font-medium">{partner.name}</span>
+                  <span className="font-semibold">{formatCurrency(partner.amount)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </Modal>
       </Suspense>
     </div>

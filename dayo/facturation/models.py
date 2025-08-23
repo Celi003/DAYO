@@ -28,11 +28,33 @@ class UserProfile(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.role}"
 
+    def cancel_subscription(self):
+        """Annule l'abonnement de l'utilisateur"""
+        self.subscription_status = "CANCELLED"
+        self.subscription_expiry = None
+        self.is_active = False
+        self.save()
+        
+        # Mettre à jour aussi le Provider associé si il existe
+        try:
+            provider = Provider.objects.get(user=self.user)
+            # Vérifier si les champs permettent les valeurs null
+            if hasattr(provider, 'subscription_status'):
+                provider.subscription_status = "CANCELLED"
+            if hasattr(provider, 'subscription_expiry'):
+                provider.subscription_expiry = None
+            provider.save()
+        except Provider.DoesNotExist:
+            pass  # Pas de provider associé
+        except Exception as e:
+            print(f"Erreur lors de la mise à jour du Provider: {e}")
+            pass  # Continuer même si la mise à jour du Provider échoue
+
 class Provider(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
-    subscription_status = models.CharField(max_length=50)
-    subscription_expiry = models.DateTimeField()
+    subscription_status = models.CharField(max_length=50, blank=True, null=True)
+    subscription_expiry = models.DateTimeField(blank=True, null=True)
 
     def __str__(self):
         return self.name

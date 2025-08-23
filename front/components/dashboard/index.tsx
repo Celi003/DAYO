@@ -11,7 +11,14 @@ export const Trend: React.FC<{current: number, previous: number}> = ({ current, 
   );
 };
 
-export const StatCard: React.FC<{ title: string; value: string; icon: React.ReactNode; tooltip: string; trend?: React.ReactNode }> = ({ title, value, icon, tooltip, trend }) => (
+export const StatCard: React.FC<{ 
+  title: string; 
+  value: string; 
+  icon: React.ReactNode; 
+  tooltip: string; 
+  trend?: React.ReactNode;
+  extraIcon?: React.ReactNode;
+}> = ({ title, value, icon, tooltip, trend, extraIcon }) => (
   <div className="bg-white p-6 rounded-lg shadow-sm flex items-center relative group" tabIndex={0} aria-label={title}>
     <div className="bg-slate-100 rounded-full p-3 mr-4">
       {icon}
@@ -20,6 +27,11 @@ export const StatCard: React.FC<{ title: string; value: string; icon: React.Reac
       <p className="text-sm text-slate-500">{title}</p>
       <p className="text-2xl font-bold text-slate-800 flex items-center">{value} {trend}</p>
     </div>
+    {extraIcon && (
+      <div className="absolute top-2 right-2">
+        {extraIcon}
+      </div>
+    )}
     <div className="absolute top-0 right-0 mt-2 mr-2 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity pointer-events-none group-focus:pointer-events-auto z-10">
       <span className="bg-slate-700 text-white text-xs rounded px-2 py-1 shadow-lg">{tooltip}</span>
     </div>

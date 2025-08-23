@@ -140,7 +140,21 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        print(f"DEBUG: perform_update called with data: {serializer.validated_data}")
+        print(f"DEBUG: Raw data received: {serializer.initial_data}")
+        print(f"DEBUG: Model fields before save: subscription_expiry={serializer.instance.subscription_expiry if serializer.instance else 'No instance'}")
+        
         instance = serializer.save()
+        
+        print(f"DEBUG: instance after save - is_active: {instance.is_active}, subscription_status: {instance.subscription_status}, subscription_expiry: {instance.subscription_expiry}")
+        print(f"DEBUG: Model fields after save: subscription_expiry={instance.subscription_expiry}")
+        
+        # Si le compte est désactivé, annuler automatiquement l'abonnement
+        if not instance.is_active and instance.role == 'PROVIDER':
+            print(f"DEBUG: Calling cancel_subscription for user {instance.user.username}")
+            instance.cancel_subscription()
+            print(f"DEBUG: After cancel_subscription - is_active: {instance.is_active}, subscription_status: {instance.subscription_status}")
+        
         AuditLog.objects.create(
             user=self.request.user,
             action='UPDATE',
