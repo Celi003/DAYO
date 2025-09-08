@@ -1,7 +1,7 @@
 import os
 import django
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "back.settings")  # adapte si ton settings s'appelle différemment
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "dayo.settings")  # adapte si ton settings s'appelle différemment
 django.setup()
 
 from django.contrib.auth.models import User
