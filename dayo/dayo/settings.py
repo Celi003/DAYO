@@ -16,7 +16,7 @@ SECRET_KEY = 'django-insecure-y)f9!)*q@52-e(p)pyhzmggmf@791p3uh^%d$k^rll094t+75h
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', '.onrender.com', 'dayo.vercel.app']
+ALLOWED_HOSTS = ['127.0.0.1', '.onrender.com', 'dayo-iota.vercel.app']
 
 
 # Application definition
@@ -53,7 +53,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://.onrender.com",
-    "https://dayo.vercel.app"
+    "https://dayo-iota.vercel.app"
 ]
 
 CORS_ALLOW_METHODS = [
