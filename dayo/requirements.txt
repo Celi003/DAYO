@@ -1,0 +1,7 @@
+celery==5.3.4
+Django==5.2.6
+djangorestframework==3.16.0
+drf_spectacular==0.28.0
+openpyxl==3.1.5
+pytz==2022.7.1
+reportlab==4.3.1
