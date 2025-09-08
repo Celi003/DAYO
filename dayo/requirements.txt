@@ -10,5 +10,6 @@ psycopg==3.1.19
 openpyxl==3.1.5
 reportlab==4.2.2
 pytz==2024.1
+gunicorn==21.2.0
 
 
