@@ -136,7 +136,7 @@ REST_FRAMEWORK = {
 DATABASES = {
    'default': {
        'ENGINE': 'django.db.backends.postgresql',
-       'NAME': 'dayo',
+       'NAME': 'dayo_lqpo',
        'USER': 'dayo_lqpo_user',
        'PASSWORD': 'Q9iwfIsBpYUO7kZWDwKH9eVQIkb0Lmcr',
        'HOST': 'dpg-d2vbkan5r7bs73cn37g0-a',
