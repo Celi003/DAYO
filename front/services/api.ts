@@ -1,7 +1,7 @@
 
 import { Invoice, Payment, Rejection, User } from '../types';
 
-const API_BASE = 'http://localhost:8000'; // À adapter selon le déploiement
+const API_BASE = 'https://dayo-2h6w.onrender.com'; // À adapter selon le déploiement
 
 let authToken: string | null = null;
 // Toujours charger le token depuis sessionStorage au démarrage
