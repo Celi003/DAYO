@@ -1,8 +1,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getInvoices, getCompanies, getBrokers } from '../services/api';
-import { Invoice, Company, Broker, User } from '../types';
-import { Eye } from 'lucide-react';
+import { getInvoices, getCompanies, getCompanys, exportInvoices } from '../services/api';
+import { Invoice, Broker, Company, User } from '../types';
+import { Eye, FileSpreadsheet, FileText } from 'lucide-react';
+import saveAs from 'file-saver';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const formatCurrency = (value: number) => `${new Intl.NumberFormat('fr-FR').format(value)} FCFA`;
 
@@ -13,7 +16,7 @@ interface PartnersProps {
 interface PartnerDetail {
     id: number;
     name: string;
-    type: 'Compagnie' | 'Courtier';
+    type: 'Courtier' | 'Compagnie';
     totalInvoiced: number;
     totalPaid: number;
     totalRejected: number;
@@ -22,8 +25,8 @@ interface PartnerDetail {
 
 const Partners: React.FC<PartnersProps> = ({ user }) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [companies, setCompanies] = useState<Broker[]>([]);
+  const [Companys, setCompanys] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<PartnerDetail | null>(null);
@@ -34,15 +37,15 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
     const fetchData = async () => {
       setLoading(true);
       try {
-      const [invoicesData, companiesData, brokersData] = await Promise.all([
+      const [invoicesData, companiesData, CompanysData] = await Promise.all([
         getInvoices(),
         getCompanies(),
-        getBrokers()
+        getCompanys()
       ]);
         
       setInvoices(invoicesData);
       setCompanies(companiesData);
-      setBrokers(brokersData);
+      setCompanys(CompanysData);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -55,14 +58,14 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
   const partnerStats = useMemo(() => {
     const partners: PartnerDetail[] = [];
     
-    // Ajouter les compagnies
+    // Ajouter les Courtiers
     if (Array.isArray(companies)) {
-      companies.forEach(company => {
-        if (company && company.id && company.name) {
+      companies.forEach(Broker => {
+        if (Broker && Broker.id && Broker.name) {
           partners.push({
-            id: company.id,
-            name: company.name,
-            type: 'Compagnie',
+            id: Broker.id,
+            name: Broker.name,
+            type: 'Courtier',
             totalInvoiced: 0,
             totalPaid: 0,
             totalRejected: 0,
@@ -72,14 +75,14 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
       });
     }
     
-    // Ajouter les courtiers
-    if (Array.isArray(brokers)) {
-      brokers.forEach(broker => {
-        if (broker && broker.id && broker.name) {
+    // Ajouter les Compagnies
+    if (Array.isArray(Companys)) {
+      Companys.forEach(Company => {
+        if (Company && Company.id && Company.name) {
           partners.push({
-            id: broker.id,
-            name: broker.name,
-            type: 'Courtier',
+            id: Company.id,
+            name: Company.name,
+            type: 'Compagnie',
             totalInvoiced: 0,
             totalPaid: 0,
             totalRejected: 0,
@@ -102,27 +105,27 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
         
         const invoiceAmount = Number(invoice.billed_amount) || 0;
         
-        // Factures où le partenaire est la compagnie
-        if (invoice.company?.id) {
-          const companyPartner = partners.find(p => p.id === invoice.company!.id && p.type === 'Compagnie');
-          if (companyPartner) {
+        // Factures où le partenaire est la Courtier
+        if (invoice.Broker?.id) {
+          const BrokerPartner = partners.find(p => p.id === invoice.Broker!.id && p.type === 'Courtier');
+          if (BrokerPartner) {
             const paid = Array.isArray(invoice.payments) ? invoice.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0) : 0;
             const rejected = Array.isArray(invoice.rejections) ? invoice.rejections.reduce((sum, r) => sum + Number(r.amount || 0), 0) : 0;
-            companyPartner.totalInvoiced += invoiceAmount;
-            companyPartner.totalPaid += paid;
-            companyPartner.totalRejected += rejected;
+            BrokerPartner.totalInvoiced += invoiceAmount;
+            BrokerPartner.totalPaid += paid;
+            BrokerPartner.totalRejected += rejected;
           }
         }
         
-        // Factures où le partenaire est le courtier
-        if (invoice.broker?.id) {
-          const brokerPartner = partners.find(p => p.id === invoice.broker!.id && p.type === 'Courtier');
-          if (brokerPartner) {
+        // Factures où le partenaire est le Compagnie
+        if (invoice.Company?.id) {
+          const CompanyPartner = partners.find(p => p.id === invoice.Company!.id && p.type === 'Compagnie');
+          if (CompanyPartner) {
             const paid = Array.isArray(invoice.payments) ? invoice.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0) : 0;
             const rejected = Array.isArray(invoice.rejections) ? invoice.rejections.reduce((sum, r) => sum + Number(r.amount || 0), 0) : 0;
-            brokerPartner.totalInvoiced += invoiceAmount;
-            brokerPartner.totalPaid += paid;
-            brokerPartner.totalRejected += rejected;
+            CompanyPartner.totalInvoiced += invoiceAmount;
+            CompanyPartner.totalPaid += paid;
+            CompanyPartner.totalRejected += rejected;
           }
       }
     });
@@ -142,7 +145,7 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
     }
     
     return result;
-  }, [invoices, companies, brokers, showOnlyWithInvoices]);
+  }, [invoices, companies, Companys, showOnlyWithInvoices]);
   
   const filteredPartners = useMemo(() => {
       return partnerStats.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -153,12 +156,61 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
     setShowDetails(true);
   };
 
-  const getPartnerInvoices = (partnerId: number, partnerType: 'Compagnie' | 'Courtier') => {
+  const handleExportPartner = async (format: 'excel' | 'csv' | 'pdf') => {
+    if (!selectedPartner) return;
+    const invoicesToExport = getPartnerInvoices(selectedPartner.id, selectedPartner.type);
+    const headers = [
+      'Numéro', 'Prestataire', 'Courtier', 'Compagnie', 'Date Dépôt', 'Mois', 'Montant', 'Payé', 'Rejeté', 'Reste', 'Statut'
+    ];
+    const rows = invoicesToExport.map((inv) => {
+      const paid = inv.payments?.reduce((s, p) => s + Number(p.amount || 0), 0) || 0;
+      const rejected = inv.rejections?.reduce((s, r) => s + Number(r.amount || 0), 0) || 0;
+      const remaining = Number(inv.billed_amount) - paid - rejected;
+      return [
+        inv.invoice_number,
+        inv.provider?.name || 'N/A',
+        inv.Broker?.name || '',
+        inv.Company?.name || '',
+        inv.deposit_date || '',
+        inv.invoice_month || '',
+        Number(inv.billed_amount) || 0,
+        paid,
+        rejected,
+        remaining,
+        inv.status,
+      ];
+    });
+    if (format === 'excel') {
+      const content = [headers, ...rows].map((row) => row.join('\t')).join('\n');
+      const blob = new Blob([content], { type: 'application/vnd.ms-excel' });
+      saveAs(blob, `partenaire_${selectedPartner.name}.xls`);
+    } else if (format === 'csv') {
+      const content = [headers, ...rows]
+        .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+      saveAs(blob, `partenaire_${selectedPartner.name}.csv`);
+    } else if (format === 'pdf') {
+      const doc = new jsPDF({ orientation: 'landscape' });
+      doc.setFontSize(14);
+      doc.text(`Détails - ${selectedPartner.name} (${selectedPartner.type})`, 14, 16);
+      autoTable(doc, {
+        head: [headers],
+        body: rows,
+        startY: 22,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [59, 130, 246] },
+      });
+      doc.save(`partenaire_${selectedPartner.name}.pdf`);
+    }
+  };
+
+  const getPartnerInvoices = (partnerId: number, partnerType: 'Courtier' | 'Compagnie') => {
     return invoices.filter(invoice => {
-      if (partnerType === 'Compagnie') {
-        return invoice.company?.id === partnerId;
+      if (partnerType === 'Courtier') {
+        return invoice.Broker?.id === partnerId;
       } else {
-        return invoice.broker?.id === partnerId;
+        return invoice.Company?.id === partnerId;
       }
     });
   };
@@ -227,7 +279,7 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
                     <td colSpan={6} className="text-center p-8 text-slate-500">
                       {searchTerm ? 'Aucun partenaire ne correspond à votre recherche.' : 
                        showOnlyWithInvoices ? 'Aucun partenaire avec des factures à afficher.' : 
-                       'Aucun partenaire trouvé. Vérifiez que des compagnies et courtiers existent dans le système.'}
+                       'Aucun partenaire trouvé. Vérifiez que des Courtiers et Compagnies existent dans le système.'}
                     </td>
                 </tr>
                )}
@@ -244,12 +296,38 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
               <h2 className="text-2xl font-bold text-slate-800">
                 Détails de {selectedPartner.name} ({selectedPartner.type})
               </h2>
-              <button
-                onClick={() => setShowDetails(false)}
-                className="text-slate-500 hover:text-slate-700 text-2xl font-bold"
-              >
-                ×
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleExportPartner('excel')}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md transition-colors"
+                  title="Exporter Excel"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  Excel
+                </button>
+                <button
+                  onClick={() => handleExportPartner('csv')}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+                  title="Exporter CSV"
+                >
+                  <FileText className="w-4 h-4" />
+                  CSV
+                </button>
+                <button
+                  onClick={() => handleExportPartner('pdf')}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors"
+                  title="Exporter PDF"
+                >
+                  <FileText className="w-4 h-4" />
+                  PDF
+                </button>
+                <button
+                  onClick={() => setShowDetails(false)}
+                  className="text-slate-500 hover:text-slate-700 text-2xl font-bold"
+                >
+                  ×
+                </button>
+              </div>
             </div>
             
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
@@ -279,11 +357,11 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
                     <tr>
                       <th className="p-3 text-sm font-semibold text-slate-600">Numéro</th>
                       <th className="p-3 text-sm font-semibold text-slate-600">Prestataire</th>
-                      {selectedPartner.type === 'Courtier' && (
-                        <th className="p-3 text-sm font-semibold text-slate-600">Compagnie</th>
-                      )}
                       {selectedPartner.type === 'Compagnie' && (
                         <th className="p-3 text-sm font-semibold text-slate-600">Courtier</th>
+                      )}
+                      {selectedPartner.type === 'Courtier' && (
+                        <th className="p-3 text-sm font-semibold text-slate-600">Compagnie</th>
                       )}
                       <th className="p-3 text-sm font-semibold text-slate-600">Date Dépôt</th>
                       <th className="p-3 text-sm font-semibold text-slate-600 text-right">Montant</th>
@@ -303,11 +381,11 @@ const Partners: React.FC<PartnersProps> = ({ user }) => {
                         <tr key={invoice.id} className="border-b hover:bg-slate-50">
                           <td className="p-3 font-medium">{invoice.invoice_number}</td>
                           <td className="p-3">{invoice.provider?.name || 'N/A'}</td>
-                          {selectedPartner.type === 'Courtier' && (
-                            <td className="p-3">{invoice.company?.name || 'N/A'}</td>
-                          )}
                           {selectedPartner.type === 'Compagnie' && (
-                            <td className="p-3">{invoice.broker?.name || 'N/A'}</td>
+                            <td className="p-3">{invoice.Broker?.name || 'N/A'}</td>
+                          )}
+                          {selectedPartner.type === 'Courtier' && (
+                            <td className="p-3">{invoice.Company?.name || 'N/A'}</td>
                           )}
                           <td className="p-3">{invoice.deposit_date}</td>
                           <td className="p-3 text-right font-mono">{formatCurrency(invoice.billed_amount)}</td>

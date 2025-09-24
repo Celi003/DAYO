@@ -2,16 +2,16 @@ import { useEffect, useState } from "react";
 import {
   getInvoices,
   getProviders,
-  getBrokers,
+  getCompanys,
   getCompanies,
   getInvoiceStatistics,
 } from "@/services/api";
-import { Invoice, Company, Broker, Partner, Provider } from "@/types";
+import { Invoice, Broker, Company, Partner, Provider } from "@/types";
 
 export function useBillingData(selectedYear: number) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [companies, setCompanies] = useState<Broker[]>([]);
+  const [Companys, setCompanys] = useState<Company[]>([]);
   const [partners, setPartners] = useState<Provider[]>([]);
   const [stats, setStats] = useState({
     totalInvoiced: 0,
@@ -29,20 +29,20 @@ export function useBillingData(selectedYear: number) {
           invoicesData,
           providersData,
           companiesData,
-          brokersData,
+          CompanysData,
           statsData,
         ] = await Promise.all([
           getInvoices(),
           getProviders(),
           getCompanies(),
-          getBrokers(),
+          getCompanys(),
           getInvoiceStatistics({ year: selectedYear }),
         ]);
 
         setInvoices(invoicesData);
         setPartners(providersData);
         setCompanies(companiesData);
-        setBrokers(brokersData);
+        setCompanys(CompanysData);
 
         setStats({
           totalInvoiced: statsData.monthly_stats.reduce(
@@ -72,16 +72,16 @@ export function useBillingData(selectedYear: number) {
     fetchData();
   }, [selectedYear]);
 
-    const companyMap = new Map(companies.map((c: Company) => [c.id, c]));
-    const brokerMap = new Map(brokers.map((b: Broker) => [b.id, b]));
+    const BrokerMap = new Map(companies.map((c: Broker) => [c.id, c]));
+    const CompanyMap = new Map(Companys.map((b: Company) => [b.id, b]));
 
   return {
     invoices,
     setInvoices,
     companies,
-    brokers,
-    companyMap,
-    brokerMap,
+    Companys,
+    BrokerMap,
+    CompanyMap,
     loading,
     partners,
     stats,

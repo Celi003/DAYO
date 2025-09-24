@@ -3,15 +3,17 @@ import { useBillingData } from "./useApi";
 import { Invoice } from "../types";
 import {
   downloadImportTemplate,
-  exportInvoices,
   getInvoices,
   importInvoices,
   useApi,
 } from "../services/api";
+import saveAs from "file-saver";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export type RegistrationFilters = {
   search: string;
-  company: string;
+  Broker: string;
   status: string;
   dateMin: string;
   dateMax: string;
@@ -23,10 +25,10 @@ export default function useRegistrations(selectedYear: number) {
     invoices,
     setInvoices,
     companies,
-    brokers,
+    Companys,
     loading,
-    companyMap,
-    brokerMap,
+    BrokerMap,
+    CompanyMap,
     partners,
   } = useBillingData(selectedYear);
   const { call } = useApi();
@@ -40,7 +42,7 @@ export default function useRegistrations(selectedYear: number) {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<RegistrationFilters>({
     search: "",
-    company: "",
+    Broker: "",
     status: "",
     dateMin: "",
     dateMax: "",
@@ -89,26 +91,97 @@ export default function useRegistrations(selectedYear: number) {
 
   const handleExport = async (format: "excel" | "pdf") => {
     try {
-      const params: Record<string, string | number> = {};
-      if (filters.company) params.company = filters.company;
-      if (filters.status) params.status = filters.status;
-      if (filters.dateMin) params.date_min = filters.dateMin;
-      if (filters.dateMax) params.date_max = filters.dateMax;
-      if (filters.amountMin) params.amount_min = filters.amountMin;
-      if (filters.amountMax) params.amount_max = filters.amountMax;
-      if (search) params.search = search;
-      const blob = await call(
-        () => exportInvoices(format, params),
-        "Export réussi"
-      );
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = format === "excel" ? "factures.xlsx" : "factures.pdf";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const headers = [
+        "Numéro",
+        "Prestataire",
+        "Courtier",
+        "Compagnie",
+        "Date Dépôt",
+        "Mois",
+        "Montant",
+        "Payé",
+        "Rejeté",
+        "Reste",
+        "Statut",
+      ];
+
+      const invoicesToExport = invoices.filter((inv: Invoice) => {
+        const entityMatch =
+          !filters.Broker ||
+          inv.Broker?.name === filters.Broker ||
+          inv.Company?.name === filters.Broker;
+        const totalPaid = (inv.payments || []).reduce(
+          (sum, p: any) => sum + Number(p.amount || 0),
+          0
+        );
+        const totalRejected = (inv.rejections || []).reduce(
+          (sum, r: any) => sum + Number(r.rejected_amount ?? r.amount ?? 0),
+          0
+        );
+        const outstanding = Number(inv.billed_amount || 0) - totalPaid - totalRejected;
+        const statusText = outstanding <= 0 ? "Payé" : totalRejected > 0 ? "Rejeté" : totalPaid > 0 ? "Partiel" : "En attente";
+        const statusMatch = !filters.status || statusText === filters.status;
+        const date = inv.deposit_date || "";
+        const dateMinMatch = !filters.dateMin || date >= filters.dateMin;
+        const dateMaxMatch = !filters.dateMax || date <= filters.dateMax;
+        const amountMinMatch = !filters.amountMin || Number(inv.billed_amount) >= Number(filters.amountMin);
+        const amountMaxMatch = !filters.amountMax || Number(inv.billed_amount) <= Number(filters.amountMax);
+        const searchMatch =
+          !search ||
+          Object.values(inv).some((v) =>
+            v?.toString().toLowerCase().includes(search.toLowerCase())
+          );
+        return (
+          entityMatch &&
+          statusMatch &&
+          dateMinMatch &&
+          dateMaxMatch &&
+          amountMinMatch &&
+          amountMaxMatch &&
+          searchMatch
+        );
+      });
+
+      const rows = invoicesToExport.map((inv) => {
+        const paid = (inv.payments || []).reduce((s, p: any) => s + Number(p.amount || 0), 0);
+        const rejected = (inv.rejections || []).reduce((s, r: any) => s + Number(r.rejected_amount ?? r.amount ?? 0), 0);
+        const remaining = Number(inv.billed_amount || 0) - paid - rejected;
+        return [
+          inv.invoice_number,
+          inv.provider?.name || "N/A",
+          inv.Broker?.name || "",
+          inv.Company?.name || "",
+          inv.deposit_date || "",
+          inv.invoice_month || "",
+          Number(inv.billed_amount) || 0,
+          paid,
+          rejected,
+          remaining,
+          inv.status,
+        ];
+      });
+
+      if (format === "excel") {
+        const content = [headers, ...rows]
+          .map((row) => row.join("\t"))
+          .join("\n");
+        const blob = new Blob([content], {
+          type: "application/vnd.ms-excel",
+        });
+        saveAs(blob, "enregistrements.xls");
+      } else if (format === "pdf") {
+        const doc = new jsPDF({ orientation: "landscape" });
+        doc.setFontSize(14);
+        doc.text(`Export Enregistrements - ${selectedYear}`, 14, 16);
+        autoTable(doc, {
+          head: [headers],
+          body: rows,
+          startY: 22,
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [59, 130, 246] },
+        });
+        doc.save(`enregistrements_${selectedYear}.pdf`);
+      }
     } catch (e) {}
   };
 
@@ -148,7 +221,7 @@ export default function useRegistrations(selectedYear: number) {
   const resetFilters = () => {
     setFilters({
       search: "",
-      company: "",
+      Broker: "",
       status: "",
       dateMin: "",
       dateMax: "",
@@ -160,10 +233,10 @@ export default function useRegistrations(selectedYear: number) {
   return {
     invoices,
     companies,
-    brokers,
+    Companys,
     resetFilters,
-    companyMap,
-    brokerMap,
+    BrokerMap,
+    CompanyMap,
     loading,
     invoiceForReminder,
     setInvoiceForReminder,

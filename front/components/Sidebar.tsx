@@ -57,7 +57,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setColla
   ];
   
   const adminNavItem = { id: 'admin' as Page, label: 'Administration', path: pageToPath.admin };
-  const navItems = user.role === 'admin' ? [...baseNavItems, adminNavItem] : baseNavItems;
+  const isAdminLike = user.role === 'admin' || user.role === 'subadmin';
+  const navItems = isAdminLike ? [...baseNavItems, adminNavItem] : baseNavItems;
   navItems.splice(1, 0, { id: 'notifications' as Page, label: 'Notifications', path: pageToPath.notifications });
 
 

@@ -40,8 +40,8 @@ const Payments: React.FC<PaymentsProps> = ({
     monthlyTransactions,
     companies,
     groupedTransactions,
-    brokers,
-    companyMap,
+    Companys,
+    BrokerMap,
   } = usePayments(selectedYear, filters);
 
 
@@ -108,7 +108,7 @@ const Payments: React.FC<PaymentsProps> = ({
                   {c.name}
                 </option>
               ))}
-              {brokers.map((b) => (
+              {Companys.map((b) => (
                 <option key={b.id} value={b.name}>
                   {b.name}
                 </option>
@@ -274,19 +274,19 @@ const Payments: React.FC<PaymentsProps> = ({
                             )}
                             <td className="p-4 font-medium">
                               {t.partnerName}
-                              {t.companyName && t.brokerName && (
+                              {t.BrokerName && t.CompanyName && (
                                 <span className="text-sm text-slate-500 ml-1">
-                                  ({t.companyName} - {t.brokerName})
+                                  ({t.BrokerName} - {t.CompanyName})
                                 </span>
                               )}
-                              {t.companyName && !t.brokerName && (
+                              {t.BrokerName && !t.CompanyName && (
                                 <span className="text-sm text-slate-500 ml-1">
-                                  ({t.companyName})
+                                  ({t.BrokerName})
                                 </span>
                               )}
-                              {!t.companyName && t.brokerName && (
+                              {!t.BrokerName && t.CompanyName && (
                                 <span className="text-sm text-slate-500 ml-1">
-                                  ({t.brokerName})
+                                  ({t.CompanyName})
                                 </span>
                               )}
                             </td>

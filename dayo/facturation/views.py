@@ -6,7 +6,9 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.views import APIView
+from django.contrib.auth.models import Permission
 import openpyxl
 from django.http import HttpResponse
 from reportlab.lib import colors
@@ -32,7 +34,7 @@ class LoginView(APIView):
             profile, created = UserProfile.objects.get_or_create(
                 user=user,
                 defaults={
-                    'role': 'PROVIDER' if not user.is_staff else 'ADMIN',
+                    'role': 'ADMIN' if user.is_superuser else ('SUB_ADMIN' if user.is_staff else 'PROVIDER'),
                     'username': user.username,
                     'email': user.email or f"{username}@example.com"
                 }
@@ -44,7 +46,8 @@ class LoginView(APIView):
                 'isActive': profile.is_active,
                 'subscriptionEndDate': profile.subscription_expiry.isoformat() if profile.subscription_expiry else None,
                 'username': user.username,
-                'id': str(profile.id)
+                'id': str(profile.id),
+                'user_id': user.id,
             })
         return Response({'error': 'Invalid credentials'}, status=400)
         # if user:
@@ -128,9 +131,11 @@ class RegisterView(APIView):
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrActiveProvider]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def perform_create(self, serializer):
+        if serializer.validated_data.get('role') == 'ADMIN' and not self.request.user.is_superuser:
+            raise PermissionDenied('Only superusers can create ADMIN users.')
         instance = serializer.save()
         AuditLog.objects.create(
             user=self.request.user,
@@ -143,6 +148,8 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         print(f"DEBUG: perform_update called with data: {serializer.validated_data}")
         print(f"DEBUG: Raw data received: {serializer.initial_data}")
         print(f"DEBUG: Model fields before save: subscription_expiry={serializer.instance.subscription_expiry if serializer.instance else 'No instance'}")
+        if serializer.validated_data.get('role') == 'ADMIN' and not self.request.user.is_superuser:
+            raise PermissionDenied('Only superusers can assign ADMIN role.')
         
         instance = serializer.save()
         
@@ -262,39 +269,6 @@ class ProviderViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
-class BrokerViewSet(viewsets.ModelViewSet):
-    queryset = Broker.objects.all()
-    serializer_class = BrokerSerializer
-    permission_classes = [IsAdminOrActiveProvider]
-
-    def perform_create(self, serializer):
-        instance = serializer.save()
-        AuditLog.objects.create(
-            user=self.request.user,
-            action='CREATE',
-            entity='Broker',
-            details=f'Created broker {instance.name} (id={instance.id})'
-        )
-
-    def perform_update(self, serializer):
-        instance = serializer.save()
-        AuditLog.objects.create(
-            user=self.request.user,
-            action='UPDATE',
-            entity='Broker',
-            details=f'Updated broker {instance.name} (id={instance.id})'
-        )
-
-    def perform_destroy(self, instance):
-        AuditLog.objects.create(
-            user=self.request.user,
-            action='DELETE',
-            entity='Broker',
-            details=f'Deleted broker {instance.name} (id={instance.id})'
-        )
-        instance.delete()
-
-
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all()
     serializer_class = CompanySerializer
@@ -306,7 +280,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             action='CREATE',
             entity='Company',
-            details=f'Created company {instance.name} (id={instance.id})'
+            details=f'Created Company {instance.name} (id={instance.id})'
         )
 
     def perform_update(self, serializer):
@@ -315,7 +289,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             action='UPDATE',
             entity='Company',
-            details=f'Updated company {instance.name} (id={instance.id})'
+            details=f'Updated Company {instance.name} (id={instance.id})'
         )
 
     def perform_destroy(self, instance):
@@ -323,7 +297,40 @@ class CompanyViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             action='DELETE',
             entity='Company',
-            details=f'Deleted company {instance.name} (id={instance.id})'
+            details=f'Deleted Company {instance.name} (id={instance.id})'
+        )
+        instance.delete()
+
+
+class BrokerViewSet(viewsets.ModelViewSet):
+    queryset = Broker.objects.all()
+    serializer_class = BrokerSerializer
+    permission_classes = [IsAdminOrActiveProvider]
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='CREATE',
+            entity='Broker',
+            details=f'Created Broker {instance.name} (id={instance.id})'
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='UPDATE',
+            entity='Broker',
+            details=f'Updated Broker {instance.name} (id={instance.id})'
+        )
+
+    def perform_destroy(self, instance):
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='DELETE',
+            entity='Broker',
+            details=f'Deleted Broker {instance.name} (id={instance.id})'
         )
         instance.delete()
 
@@ -340,7 +347,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Invoice.objects.select_related('provider', 'company', 'broker').prefetch_related('payments', 'rejections')
+        queryset = Invoice.objects.select_related('provider', 'Broker', 'Company').prefetch_related('payments', 'rejections')
         if user.userprofile.role == 'ADMIN':
             return queryset
         return queryset.filter(provider__user=user)
@@ -348,8 +355,19 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
         if user.userprofile.role == 'PROVIDER':
-            provider = Provider.objects.get(user=user)
-            instance = serializer.save(provider=provider)
+            provider, _ = Provider.objects.get_or_create(
+                user=user,
+                defaults={
+                    'name': user.username,
+                    'subscription_status': user.userprofile.subscription_status or 'ACTIVE',
+                    'subscription_expiry': user.userprofile.subscription_expiry,
+                }
+            )
+            # If payload didn't include provider_id, enforce the provider from the logged-in user
+            if 'provider' not in serializer.validated_data:
+                instance = serializer.save(provider=provider)
+            else:
+                instance = serializer.save()
         else:
             instance = serializer.save()
         AuditLog.objects.create(
@@ -431,8 +449,17 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         invoice = self.get_object()
         serializer = PaymentSerializer(data=request.data)
         if serializer.is_valid():
+            amount = serializer.validated_data['amount']
+            # Validation: le paiement ne doit pas dépasser le reste à régler
+            try:
+                remaining_before = invoice.remaining_amount()
+            except Exception:
+                remaining_before = invoice.billed_amount - invoice.paid_amount - invoice.rejected_amount()
+            if amount > remaining_before:
+                return Response({'error': 'Le paiement dépasse le montant restant de la facture.'}, status=status.HTTP_400_BAD_REQUEST)
+
             payment = serializer.save(invoice=invoice)
-            invoice.paid_amount += serializer.validated_data['amount']
+            invoice.paid_amount += amount
             invoice.status = 'PAID' if invoice.remaining_amount() <= 0 else 'PARTIAL'
             invoice.save()
             # Notification interne au provider
@@ -451,6 +478,15 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         invoice = self.get_object()
         serializer = RejectionSerializer(data=request.data)
         if serializer.is_valid():
+            amount = serializer.validated_data['rejected_amount']
+            # Validation: le rejet ne doit pas dépasser le montant restant après paiements
+            try:
+                remaining_before = invoice.remaining_amount()
+            except Exception:
+                remaining_before = invoice.billed_amount - invoice.paid_amount - invoice.rejected_amount()
+            if amount > remaining_before:
+                return Response({'error': 'Le montant du rejet dépasse le solde restant de la facture.'}, status=status.HTTP_400_BAD_REQUEST)
+
             rejection = serializer.save(invoice=invoice)
             invoice.status = 'REJECTED' if invoice.remaining_amount() <= 0 else 'PARTIAL'
             invoice.save()
@@ -467,8 +503,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsActiveProvider | IsAdmin])
     def statistics(self, request):
         filters = {
-            'broker_id': request.query_params.get('broker_id'),
-            'company_id': request.query_params.get('company_id'),
+            'Company_id': request.query_params.get('Company_id'),
+            'Broker_id': request.query_params.get('Broker_id'),
             'invoice_month__year': request.query_params.get('year'),
             'invoice_month__month': request.query_params.get('month'),
         }
@@ -539,16 +575,16 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             return Response({'error': 'No reclamation needed'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Déterminer le destinataire et l'email selon le type de facture
-        if invoice.company:
-            # Facture avec compagnie
-            recipient_name = invoice.company.name
-            recipient_email = invoice.company.contact_email
-        elif invoice.broker:
-            # Facture avec courtier seulement
-            recipient_name = invoice.broker.name
-            recipient_email = invoice.broker.email
+        if invoice.Broker:
+            # Facture avec Courtier
+            recipient_name = invoice.Broker.name
+            recipient_email = invoice.Broker.contact_email
+        elif invoice.Company:
+            # Facture avec Compagnie seulement
+            recipient_name = invoice.Company.name
+            recipient_email = invoice.Company.email
         else:
-            return Response({'error': 'No company or broker found for this invoice'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No Broker or Company found for this invoice'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Vérifier que l'email existe
         if not recipient_email:
@@ -610,21 +646,21 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     def download_template(self, request):
         workbook = openpyxl.Workbook()
 
-        # Brokers Sheet
-        sheet = workbook.create_sheet('Brokers')
+        # Companys Sheet
+        sheet = workbook.create_sheet('Companys')
         sheet.append(['Name'])
         # sheet.append(['DAYO'])  # Example data
         # sheet.append(['OLEA'])
 
         # Companies Sheet
         sheet = workbook.create_sheet('Companies')
-        sheet.append(['Name', 'Broker Name', 'Contact Email'])
+        sheet.append(['Name', 'Company Name', 'Contact Email'])
         # sheet.append(['NSIA', 'DAYO', 'nsia@example.com'])
         # sheet.append(['SUNU', 'DAYO', 'sunu@example.com'])
 
         # Invoices Sheet
         sheet = workbook.create_sheet('Invoices')
-        sheet.append(['Provider Name', 'Broker Name', 'Company Name', 'Invoice Number', 'Invoice Month (YYYY-MM)',
+        sheet.append(['Provider Name', 'Company Name', 'Broker Name', 'Invoice Number', 'Invoice Month (YYYY-MM)',
                       'Billed Amount', 'Paid Amount', 'Status'])
         # sheet.append(['Provider1', 'DAYO', 'NSIA', 'INV001', '2025-01', 150000, 100000, 'PARTIAL'])
 
@@ -651,47 +687,47 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             return Response({'error': f'Invalid Excel file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
         errors = []
-        created_records = {'brokers': 0, 'companies': 0, 'invoices': 0}
+        created_records = {'Companys': 0, 'companies': 0, 'invoices': 0}
 
-        # Import Brokers
-        if 'Brokers' in workbook.sheetnames:
-            sheet = workbook['Brokers']
+        # Import Companys
+        if 'Companys' in workbook.sheetnames:
+            sheet = workbook['Companys']
             if sheet.max_row < 2 or sheet[1][0].value != 'Name':
-                errors.append('Brokers sheet: Missing or incorrect header (expected "Name")')
+                errors.append('Companys sheet: Missing or incorrect header (expected "Name")')
             else:
                 for row in sheet.iter_rows(min_row=2, values_only=True):
                     name = row[0]
                     if not name:
                         continue
                     if request.user.userprofile.role == 'ADMIN':
-                        Broker.objects.get_or_create(name=name)
-                        created_records['brokers'] += 1
+                        Company.objects.get_or_create(name=name)
+                        created_records['Companys'] += 1
                     else:
-                        errors.append('Only admins can import brokers')
+                        errors.append('Only admins can import Companys')
                         break
 
         # Import Companies
         if 'Companies' in workbook.sheetnames:
             sheet = workbook['Companies']
             if sheet.max_row < 2 or tuple(cell.value for cell in sheet[1][:3]) != (
-            'Name', 'Broker Name', 'Contact Email'):
+            'Name', 'Company Name', 'Contact Email'):
                 errors.append(
-                    'Companies sheet: Missing or incorrect headers (expected "Name", "Broker Name", "Contact Email")')
+                    'Companies sheet: Missing or incorrect headers (expected "Name", "Company Name", "Contact Email")')
             else:
                 for row in sheet.iter_rows(min_row=2, values_only=True):
-                    name, broker_name, contact_email = row[:3]
-                    if not (name and broker_name):
+                    name, Company_name, contact_email = row[:3]
+                    if not (name and Company_name):
                         continue
                     if request.user.userprofile.role == 'ADMIN':
                         try:
-                            broker = Broker.objects.get(name=broker_name)
-                            Company.objects.get_or_create(
+                            Company = Company.objects.get(name=Company_name)
+                            Broker.objects.get_or_create(
                                 name=name,
-                                defaults={'broker': broker, 'contact_email': contact_email}
+                                defaults={'Company': Company, 'contact_email': contact_email}
                             )
                             created_records['companies'] += 1
-                        except Broker.DoesNotExist:
-                            errors.append(f'Company {name}: Broker {broker_name} not found')
+                        except Company.DoesNotExist:
+                            errors.append(f'Broker {name}: Company {Company_name} not found')
                     else:
                         errors.append('Only admins can import companies')
                         break
@@ -699,17 +735,17 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         # Import Invoices
         if 'Invoices' in workbook.sheetnames:
             sheet = workbook['Invoices']
-            expected_headers = ['Provider Name', 'Broker Name', 'Company Name', 'Invoice Number',
+            expected_headers = ['Provider Name', 'Company Name', 'Broker Name', 'Invoice Number',
                                 'Invoice Month (YYYY-MM)', 'Billed Amount', 'Paid Amount', 'Status']
             if sheet.max_row < 2 or tuple(cell.value for cell in sheet[1][:8]) != tuple(expected_headers):
                 errors.append(
                     'Invoices sheet: Missing or incorrect headers (expected: ' + ', '.join(expected_headers) + ')')
             else:
                 for row in sheet.iter_rows(min_row=2, values_only=True):
-                    provider_name, broker_name, company_name, invoice_number, invoice_month, billed_amount, paid_amount, status = row[
+                    provider_name, Company_name, Broker_name, invoice_number, invoice_month, billed_amount, paid_amount, status = row[
                                                                                                                                   :8]
                     if not all(
-                            [provider_name, broker_name, company_name, invoice_number, invoice_month, billed_amount]):
+                            [provider_name, Company_name, Broker_name, invoice_number, invoice_month, billed_amount]):
                         continue
 
                     try:
@@ -723,8 +759,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                         billed_amount = float(billed_amount)
                         paid_amount = float(paid_amount) if paid_amount else 0.0
 
-                        broker = Broker.objects.get(name=broker_name)
-                        company = Company.objects.get(name=company_name, broker=broker)
+                        Company = Company.objects.get(name=Company_name)
+                        Broker = Broker.objects.get(name=Broker_name, Company=Company)
 
                         if request.user.userprofile.role == 'ADMIN':
                             provider = Provider.objects.get(name=provider_name)
@@ -739,8 +775,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                             invoice_number=invoice_number,
                             defaults={
                                 'provider': provider,
-                                'broker': broker,
-                                'company': company,
+                                'Company': Company,
+                                'Broker': Broker,
                                 'invoice_month': invoice_month,
                                 'billed_amount': billed_amount,
                                 'paid_amount': paid_amount,
@@ -748,7 +784,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                             }
                         )
                         created_records['invoices'] += 1
-                    except (Broker.DoesNotExist, Company.DoesNotExist, Provider.DoesNotExist, ValueError) as e:
+                    except (Company.DoesNotExist, Broker.DoesNotExist, Provider.DoesNotExist, ValueError) as e:
                         errors.append(f'Invoice {invoice_number}: {str(e)}')
 
         if errors:
@@ -823,6 +859,18 @@ class NotificationViewSet(viewsets.ModelViewSet):
             'deleted_count': count
         }, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['patch'], permission_classes=[IsAuthenticated])
+    def mark_all_read(self, request):
+        """Marquer toutes les notifications de l'utilisateur connecté comme lues"""
+        user = request.user
+        # Marquer toutes les notifications non lues de l'utilisateur comme lues
+        count = Notification.objects.filter(user=user, is_read=False).update(is_read=True)
+        
+        return Response({
+            'message': f'{count} notification(s) marquée(s) comme lue(s)',
+            'updated_count': count
+        }, status=status.HTTP_200_OK)
+
 
 
 
@@ -844,16 +892,38 @@ class CreateSubadminView(APIView):
         try:
             # Créer l'utilisateur
             user = User.objects.create_user(username=username, password=password)
+            user.is_staff = True  # Allow access to Django admin
+            user.is_superuser = False
+            user.save(update_fields=["is_staff", "is_superuser"])
             
             # Créer le profil utilisateur
             profile = UserProfile.objects.create(
                 user=user,
                 username=username,
-                role='ADMIN',  # Sous-admin = admin avec permissions limitées
+                role='SUB_ADMIN',  # Sous-admin distinct du rôle ADMIN
                 is_active=True,
                 email=user.email or f"{username}@example.com",
                 permissions=permissions  # Stocker les permissions comme JSON
             )
+
+            # Assigner les permissions Django si fournies
+            assigned = 0
+            for perm in permissions:
+                try:
+                    if isinstance(perm, str):
+                        app_label = None
+                        codename = perm
+                        if "." in perm:
+                            app_label, codename = perm.split(".", 1)
+                            p = Permission.objects.get(content_type__app_label=app_label, codename=codename)
+                        else:
+                            p = Permission.objects.get(codename=codename)
+                        user.user_permissions.add(p)
+                        assigned += 1
+                except Permission.DoesNotExist:
+                    continue
+                except Exception:
+                    continue
             
             return Response({
                 'user_id': user.id,
@@ -870,12 +940,15 @@ class ExportView(APIView):
     
     def get(self, request):
         print("Export function called!")
+        print(f"Request user: {request.user}")
+        print(f"Query params: {request.query_params}")
         
         # Récupérer le format d'export
         format_type = request.query_params.get('format', 'excel')
+        print(f"Format: {format_type}")
         
         # Récupérer les filtres
-        company_filter = request.query_params.get('company')
+        Broker_filter = request.query_params.get('Broker')
         status_filter = request.query_params.get('status')
         date_min = request.query_params.get('date_min')
         date_max = request.query_params.get('date_max')
@@ -883,15 +956,17 @@ class ExportView(APIView):
         amount_max = request.query_params.get('amount_max')
         search = request.query_params.get('search')
         
+        print(f"Filters: Broker={Broker_filter}, status={status_filter}, search={search}")
+        
         # Construire le queryset avec les filtres
         user = request.user
-        queryset = Invoice.objects.select_related('provider', 'company', 'broker').prefetch_related('payments', 'rejections')
+        queryset = Invoice.objects.select_related('provider', 'Broker', 'Company').prefetch_related('payments', 'rejections')
         
         if user.userprofile.role != 'ADMIN':
             queryset = queryset.filter(provider__user=user)
         
-        if company_filter:
-            queryset = queryset.filter(company__name=company_filter)
+        if Broker_filter:
+            queryset = queryset.filter(Broker__name=Broker_filter)
         
         if status_filter:
             if status_filter == 'PAID':
@@ -919,12 +994,13 @@ class ExportView(APIView):
             queryset = queryset.filter(
                 Q(invoice_number__icontains=search) |
                 Q(provider__name__icontains=search) |
-                Q(company__name__icontains=search) |
-                Q(broker__name__icontains=search)
+                Q(Broker__name__icontains=search) |
+                Q(Company__name__icontains=search)
             )
         
         # Récupérer les données
         invoices = list(queryset)
+        print(f"Found {len(invoices)} invoices")
         
         if format_type == 'excel':
             return self._export_excel(invoices)
@@ -940,8 +1016,8 @@ class ExportView(APIView):
         
         # En-têtes
         headers = [
-            'ID', 'Numéro Facture', 'Prestataire', 'Compagnie', 'Courtier', 
-            'Mois Facture', 'Date Dépôt', 'Montant Facturé', 'Montant Payé', 
+            'ID', 'Numéro Facture', 'Prestataire', 'Entité',
+            'Mois Facture', 'Date Dépôt', 'Montant Facturé', 'Montant Payé',
             'Montant Rejeté', 'Reste à Régler', 'Statut', 'Paiements', 'Rejets'
         ]
         
@@ -959,12 +1035,15 @@ class ExportView(APIView):
             payments_str = '; '.join([f"{p.amount} ({p.payment_date})" for p in invoice.payments.all()])
             rejections_str = '; '.join([f"{r.rejected_amount} ({r.rejection_reason})" for r in invoice.rejections.all()])
             
+            entity = (
+                f"{invoice.Broker.name} ({invoice.Company.name})" if invoice.Broker and invoice.Company
+                else (invoice.Broker.name if invoice.Broker else (invoice.Company.name if invoice.Company else 'N/A'))
+            )
             data = [
                 invoice.id,
                 invoice.invoice_number,
                 invoice.provider.name if invoice.provider else 'N/A',
-                invoice.company.name if invoice.company else 'N/A',
-                invoice.broker.name if invoice.broker else 'N/A',
+                entity,
                 invoice.invoice_month,
                 invoice.deposit_date,
                 invoice.billed_amount,
@@ -1003,14 +1082,18 @@ class ExportView(APIView):
         elements.append(Paragraph("<br/>", styles['Normal']))
         
         # Tableau des données
-        data = [['ID', 'Numéro', 'Prestataire', 'Compagnie', 'Montant', 'Statut']]
+        data = [['ID', 'Numéro', 'Prestataire', 'Entité', 'Montant', 'Statut']]
         
         for invoice in invoices:
+            entity = (
+                f"{invoice.Broker.name} ({invoice.Company.name})" if invoice.Broker and invoice.Company
+                else (invoice.Broker.name if invoice.Broker else (invoice.Company.name if invoice.Company else 'N/A'))
+            )
             data.append([
                 str(invoice.id),
                 invoice.invoice_number,
                 invoice.provider.name if invoice.provider else 'N/A',
-                invoice.company.name if invoice.company else 'N/A',
+                entity,
                 f"{invoice.billed_amount} FCFA",
                 invoice.status
             ])

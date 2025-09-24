@@ -7,6 +7,7 @@ from datetime import timedelta
 class UserProfile(models.Model):
     ROLE_CHOICES = (
         ('ADMIN', 'Admin'),
+        ('SUB_ADMIN', 'Sous-admin'),
         ('PROVIDER', 'Provider'),
     )
     SUBSCRIPTION_DURATIONS = {
@@ -59,16 +60,16 @@ class Provider(models.Model):
     def __str__(self):
         return self.name
 
-class Broker(models.Model):
+class Company(models.Model):
     name = models.CharField(max_length=255)
     email = models.EmailField(blank=True, null=True)
 
     def __str__(self):
         return self.name
 
-class Company(models.Model):
+class Broker(models.Model):
     name = models.CharField(max_length=255)
-    brokers = models.ManyToManyField(Broker, related_name='companies', blank=True)
+    Companys = models.ManyToManyField(Company, related_name='companies', blank=True)
     contact_email = models.EmailField(blank=True, null=True)
 
     def __str__(self):
@@ -83,8 +84,8 @@ class Invoice(models.Model):
     )
 
     provider = models.ForeignKey(Provider, on_delete=models.CASCADE, related_name='invoices')
-    broker = models.ForeignKey(Broker, on_delete=models.CASCADE, related_name='invoices', null=True, blank=True)
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='invoices', null=True, blank=True)
+    Company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='invoices', null=True, blank=True)
+    Broker = models.ForeignKey(Broker, on_delete=models.CASCADE, related_name='invoices', null=True, blank=True)
     invoice_number = models.CharField(max_length=100)
     deposit_date = models.DateField(null=True, blank=True)
     invoice_month = models.DateField()
@@ -99,7 +100,7 @@ class Invoice(models.Model):
         return self.rejections.aggregate(total=Sum('rejected_amount'))['total'] or 0
 
     def __str__(self):
-        return f"{self.invoice_number} - {self.company.name}"
+        return f"{self.invoice_number} - {self.Broker.name}"
 
 class Payment(models.Model):
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='payments')

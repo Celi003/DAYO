@@ -53,7 +53,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     filteredInvoices,
     partnerPaymentStatusData,
     partnerRevenueData
-  } = useDashboard(selectedYear, filterPartner, filterStatus, filterMonth);
+  } = useDashboard(selectedYear, filterPartner, filterStatus, filterMonth, user.role);
 
   const { stackedBarData } = useDashboardCharts(
     filteredInvoices
@@ -371,6 +371,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             >
               Exporter Excel
             </button>
+            <button
+              onClick={() => exportDashboardData("pdf")}
+              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              Exporter PDF
+            </button>
           </div>
         </div>
       </div>
@@ -548,6 +554,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
           <RevenueDetailsModalContent
             data={filteredInvoicesForYear}
             partnerMap={partnerMap}
+            userRole={user.role}
           />
         </Modal>
       </Suspense>

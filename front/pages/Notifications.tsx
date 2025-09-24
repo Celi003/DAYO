@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Notification } from "../types";
-import { useApi, getNotifications, patchNotification, clearAllNotifications, deleteNotification } from "../services/api";
+import { useApi, getNotifications, patchNotification, clearAllNotifications, deleteNotification, markAllNotificationsAsRead } from "../services/api";
 import { useNotification } from "../components/NotificationContext";
+import { useUnreadNotifications } from "../contexts/UnreadNotificationsContext";
 import { Trash2 } from "lucide-react";
 
 const typeLabel: Record<string, string> = {
@@ -59,16 +60,21 @@ const Notifications: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const { call } = useApi();
   const { notify } = useNotification();
+  const { updateUnreadCount, decrementUnreadCount, setUnreadCount, incrementUnreadCount } = useUnreadNotifications();
 
   const load = async () => {
     setLoading(true);
     const data = await call(() => getNotifications());
     setNotifications(data || []);
+    // Mettre à jour le compteur après avoir chargé les notifications
+    await updateUnreadCount();
     setLoading(false);
   };
 
   useEffect(() => {
     load();
+    // Marquer toutes les notifications comme vues lors de l'accès à la page
+    // (optionnel: vous pouvez décider si visiter la page = marquer comme lu automatiquement)
   }, []);
 
   const handleMark = async (notif: Notification, read: boolean) => {
@@ -83,6 +89,27 @@ const Notifications: React.FC = () => {
         n.id === notif.id ? { ...n, is_read: read } : n
       )
     );
+    
+    // Mettre à jour le compteur immédiatement
+    if (read && !notif.is_read) {
+      // Marquer comme lu: décrémenter le compteur
+      decrementUnreadCount();
+    } else if (!read && notif.is_read) {
+      // Marquer comme non lu: incrémenter le compteur
+      incrementUnreadCount();
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await call(() => markAllNotificationsAsRead(), "Toutes les notifications ont été marquées comme lues");
+      // Mettre à jour l'état local
+      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+      // Réinitialiser le compteur à 0
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('Erreur lors du marquage:', error);
+    }
   };
 
   const handleClearAll = async () => {
@@ -90,6 +117,8 @@ const Notifications: React.FC = () => {
       const result = await call(() => clearAllNotifications(), "Toutes les notifications ont été supprimées");
       if (result) {
         setNotifications([]);
+        // Réinitialiser le compteur à 0
+        setUnreadCount(0);
       }
     }
   };
@@ -101,6 +130,11 @@ const Notifications: React.FC = () => {
         setNotifications((notifications: Notification[]) =>
           notifications.filter((n: Notification) => n.id !== notif.id)
         );
+        
+        // Si la notification supprimée n'était pas lue, décrémenter le compteur
+        if (!notif.is_read) {
+          decrementUnreadCount();
+        }
       }
     }
   };
@@ -113,12 +147,20 @@ const Notifications: React.FC = () => {
     <div className="p-8 max-w-3xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">Notifications</h1>
       <div className="flex gap-4 mb-4">
-      <button
-        onClick={load}
+        <button
+          onClick={load}
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-      >
-        Rafraîchir
-      </button>
+        >
+          Rafraîchir
+        </button>
+        {notifications.length > 0 && notifications.some(n => !n.is_read) && (
+          <button
+            onClick={handleMarkAllAsRead}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            Marquer toutes comme lues
+          </button>
+        )}
         {notifications.length > 0 && (
           <button
             onClick={handleClearAll}

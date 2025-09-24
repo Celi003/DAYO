@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useBillingData } from "./useApi";
-import { Broker, Company, Invoice, Transaction, TransactionType } from "@/types";
+import { Company, Broker, Invoice, Transaction, TransactionType } from "@/types";
 import { useFilter } from "./useFilter";
 
 type PaymentTransaction = {
@@ -25,7 +25,7 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
     col: "date",
     asc: false,
   });
-  const { invoices, companies, brokers, loading, companyMap, brokerMap } =
+  const { invoices, companies, Companys, loading, BrokerMap, CompanyMap } =
     useBillingData(selectedYear);
 
   const config = {
@@ -88,25 +88,25 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
         return; // Ignorer les factures sans paiements ni rejets
       }
 
-      const isCompany = !!invoice.company?.id;
-      const partnerId: number | undefined = isCompany
-        ? invoice.company?.id
-        : invoice.broker?.id;
+      const isBroker = !!invoice.Broker?.id;
+      const partnerId: number | undefined = isBroker
+        ? invoice.Broker?.id
+        : invoice.Company?.id;
       
-      // Récupérer les noms de compagnie et courtier
-      const companyName = invoice.company?.id 
-        ? (companyMap.get(invoice.company.id) as Company)?.name 
+      // Récupérer les noms de Courtier et Compagnie
+      const BrokerName = invoice.Broker?.id 
+        ? (BrokerMap.get(invoice.Broker.id) as Broker)?.name 
         : undefined;
-      const brokerName = invoice.broker?.id 
-        ? (brokerMap.get(invoice.broker.id) as Broker)?.name 
+      const CompanyName = invoice.Company?.id 
+        ? (CompanyMap.get(invoice.Company.id) as Company)?.name 
         : undefined;
       
       // Déterminer le nom du partenaire principal
       let partnerName = "Inconnu";
-      if (isCompany && companyName) {
-        partnerName = companyName;
-      } else if (!isCompany && brokerName) {
-        partnerName = brokerName;
+      if (isBroker && BrokerName) {
+        partnerName = BrokerName;
+      } else if (!isBroker && CompanyName) {
+        partnerName = CompanyName;
       }
 
       // Ajouter les paiements
@@ -122,8 +122,8 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
           type: "Paiement",
           amount: payment.amount,
           providerName: invoice.provider.name,
-            companyName,
-            brokerName,
+            BrokerName,
+            CompanyName,
       });
         });
       }
@@ -142,15 +142,15 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
           amount: rejection.rejected_amount,
           reason: rejection.rejection_reason,
           providerName: invoice.provider.name,
-            companyName,
-            brokerName,
+            BrokerName,
+            CompanyName,
           });
         });
       }
     });
 
     return allTransactions;
-  }, [invoices, companyMap, brokerMap]);
+  }, [invoices, BrokerMap, CompanyMap]);
 
   const monthlyTransactions: PaymentTransaction[] = useMemo(() => {
     const byMonth: { [key: string]: PaymentTransaction } = {};
@@ -239,10 +239,10 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
     transactions,
     monthlyTransactions,
     config,
-    companyMap,
+    BrokerMap,
     companies,
     sort,
     handleSort,
-    brokers,
+    Companys,
   };
 }

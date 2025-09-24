@@ -5,7 +5,7 @@ import pytz
 
 class IsAdmin(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.userprofile.role == 'ADMIN'
+        return request.user.is_authenticated and request.user.userprofile.role in ('ADMIN', 'SUB_ADMIN')
 
 class IsActiveProvider(BasePermission):
     def has_permission(self, request, view):
@@ -13,7 +13,7 @@ class IsActiveProvider(BasePermission):
             return False
         profile = request.user.userprofile
         # Les admins ne sont jamais bloqués par is_active ou l'abonnement
-        if profile.role == 'ADMIN':
+        if profile.role in ('ADMIN', 'SUB_ADMIN'):
             return True
         if profile.role != 'PROVIDER':
             return False
@@ -34,7 +34,7 @@ class IsAdminOrActiveProvider(BasePermission):
             return False
         if not profile:
             return False
-        if profile.role == 'ADMIN':
+        if profile.role in ('ADMIN', 'SUB_ADMIN'):
             return True
         if profile.role == 'PROVIDER' and profile.is_active:
             return True

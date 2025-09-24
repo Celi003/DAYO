@@ -3,7 +3,7 @@ export interface User {
   id: number;
   username: string;
   email?: string;
-  role: "admin" | "provider" | "subadmin" | "broker" | "company";
+  role: "admin" | "provider" | "subadmin" | "Company" | "Broker";
   isActive: boolean;
   permissions?: string[];
   subscriptionEndDate?: string;
@@ -18,23 +18,23 @@ export interface Partner {
   address?: string;
   phone?: string;
   email?: string;
-  type: "provider" | "broker" | "company";
-  company_id?: number; // For brokers
-}
-
-export interface Company {
-  id: number;
-  name: string;
-  brokers?: Broker[];
-  broker_ids?: number[];
-  contact_email: string;
+  type: "provider" | "Company" | "Broker";
+  Broker_id?: number; // For Companys
 }
 
 export interface Broker {
   id: number;
   name: string;
+  Companys?: Company[];
+  Company_ids?: number[];
+  contact_email: string;
+}
+
+export interface Company {
+  id: number;
+  name: string;
   email?: string;
-  companyId?: number;
+  BrokerId?: number;
 }
 
 export interface Invoice {
@@ -48,8 +48,8 @@ export interface Invoice {
   invoice_month: string; 
   billed_amount: number;
   provider: Provider;
-  company?: Company | null;
-  broker?: Broker | null;
+  Broker?: Broker | null;
+  Company?: Company | null;
   payments?: Payment[];
   rejections?: Rejection[];
 }
@@ -100,7 +100,7 @@ export interface Transaction {
   amount: number;
   reason?: string;
   providerName?: string;
-  companyName?: string;
-  brokerName?: string;
+  BrokerName?: string;
+  CompanyName?: string;
 }
 export type Page = 'dashboard' | 'registrations' | 'payments' | 'partners' | 'admin' | 'notifications';

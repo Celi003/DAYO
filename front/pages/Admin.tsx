@@ -23,8 +23,8 @@ const ALL_ROLES = [
   "admin",
   "subadmin",
   "provider",
-  "broker",
-  "company",
+  "Company",
+  "Broker",
 ] as const;
 const ALL_PERMISSIONS = [
   "can_edit_invoice",
@@ -190,7 +190,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
         createSubadmin({
           username: newSubadmin.username,
           password: newSubadmin.password,
-          role: "admin",
+          role: "subadmin",
           permissions: newSubadmin.permissions,
         }),
       "Sous-admin créé"

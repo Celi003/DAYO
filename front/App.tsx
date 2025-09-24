@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { User } from './types';
 import * as api from './services/api';
 import { NotificationProvider } from './components/NotificationContext';
+import { UnreadNotificationsProvider, useUnreadNotifications } from './contexts/UnreadNotificationsContext';
 
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 const Registrations = React.lazy(() => import('./pages/Registrations'));
@@ -23,7 +24,6 @@ const App: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
-  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -34,25 +34,6 @@ const App: React.FC = () => {
     checkUser();
   }, []);
 
-  useEffect(() => {
-    const loadUnreadNotificationsCount = async () => {
-      if (currentUser) {
-        try {
-          const notifications = await api.getNotifications();
-          const unreadCount = notifications?.filter((n: any) => !n.is_read).length || 0;
-          setUnreadNotificationsCount(unreadCount);
-        } catch (error) {
-          console.error('Error loading notifications count:', error);
-        }
-      }
-    };
-
-    loadUnreadNotificationsCount();
-    // Rafraîchir toutes les 30 secondes
-    const interval = setInterval(loadUnreadNotificationsCount, 30000);
-    return () => clearInterval(interval);
-  }, [currentUser]);
-
   const handleLogin = (user: User) => {
     setCurrentUser(user);
   };
@@ -62,20 +43,24 @@ const App: React.FC = () => {
     setCurrentUser(null);
   };
 
-  const Layout = ({ children }: { children: React.ReactNode }) => (
-    <div className="flex h-screen bg-slate-100">
-      <Sidebar
-        user={currentUser!}
-        onLogout={handleLogout}
-        isCollapsed={isSidebarCollapsed}
-        setCollapsed={setIsSidebarCollapsed}
-        unreadNotificationsCount={unreadNotificationsCount}
-      />
-      <main className="flex-1 overflow-y-auto transition-all duration-300 ease-in-out p-6">
-        {children}
-      </main>
-    </div>
-  );
+  const Layout = ({ children }: { children: React.ReactNode }) => {
+    const { unreadCount } = useUnreadNotifications();
+    
+    return (
+      <div className="flex h-screen bg-slate-100">
+        <Sidebar
+          user={currentUser!}
+          onLogout={handleLogout}
+          isCollapsed={isSidebarCollapsed}
+          setCollapsed={setIsSidebarCollapsed}
+          unreadNotificationsCount={unreadCount}
+        />
+        <main className="flex-1 overflow-y-auto transition-all duration-300 ease-in-out p-6">
+          {children}
+        </main>
+      </div>
+    );
+  };
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-screen bg-slate-100"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-slate-500"></div></div>;
@@ -113,95 +98,97 @@ const App: React.FC = () => {
 
   return (
     <NotificationProvider>
-      <Router>
-        <Suspense
-          fallback={
-            <div className="flex items-center justify-center h-screen bg-slate-100">
-              <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-slate-500"></div>
-            </div>
-          }
-        >
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <Layout>
-                  <Dashboard user={currentUser} />
-                </Layout>
-              }
-            />
-            <Route
-              path="/notifications"
-              element={
-                <Layout>
-                  <Notifications />
-                </Layout>
-              }
-            />
-            <Route
-              path="/registrations"
-              element={
-                <Layout>
-                  <Registrations user={currentUser} />
-                </Layout>
-              }
-            />
-            <Route
-              path="/payments"
-              element={
-                <Layout>
-                  <Payments user={currentUser} />
-                </Layout>
-              }
-            />
-            <Route
-              path="/partners"
-              element={
-                <Layout>
-                  <Partners user={currentUser} />
-                </Layout>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <Layout>
-                  {currentUser.role === "admin" ? (
-                    <Admin />
-                  ) : (
+      <UnreadNotificationsProvider currentUser={currentUser}>
+        <Router>
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center h-screen bg-slate-100">
+                <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-slate-500"></div>
+              </div>
+            }
+          >
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <Layout>
                     <Dashboard user={currentUser} />
-                  )}
-                </Layout>
-              }
-            />
-            <Route
-              path="/entities"
-              element={
-                <Layout>
-                  <Entities />
-                </Layout>
-              }
-            />
-            <Route
-              path="/payment-details"
-              element={
-                <Layout>
-                  <PaymentDetails />
-                </Layout>
-              }
-            />
-            <Route
-              path="/audit-log"
-              element={
-                <Layout>
-                  <AuditLog />
-                </Layout>
-              }
-            />
-            {/* Garder les routes sans layout pour login/signup si nécessaire */}
-          </Routes>
-        </Suspense>
-      </Router>
+                  </Layout>
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <Layout>
+                    <Notifications />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/registrations"
+                element={
+                  <Layout>
+                    <Registrations user={currentUser} />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/payments"
+                element={
+                  <Layout>
+                    <Payments user={currentUser} />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/partners"
+                element={
+                  <Layout>
+                    <Partners user={currentUser} />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <Layout>
+                    {(currentUser.role === "admin" || currentUser.role === "subadmin") ? (
+                      <Admin subadminMode={currentUser.role === "subadmin"} user={currentUser} />
+                    ) : (
+                      <Dashboard user={currentUser} />
+                    )}
+                  </Layout>
+                }
+              />
+              <Route
+                path="/entities"
+                element={
+                  <Layout>
+                    <Entities />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/payment-details"
+                element={
+                  <Layout>
+                    <PaymentDetails />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/audit-log"
+                element={
+                  <Layout>
+                    <AuditLog />
+                  </Layout>
+                }
+              />
+              {/* Garder les routes sans layout pour login/signup si nécessaire */}
+            </Routes>
+          </Suspense>
+        </Router>
+      </UnreadNotificationsProvider>
     </NotificationProvider>
   );
 };

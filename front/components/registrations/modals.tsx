@@ -1,12 +1,12 @@
 import { generateReclamationLetter } from "@/services/api";
-import { Invoice, Company, Broker } from "@/types";
+import { Invoice, Broker, Company } from "@/types";
 import { useState, useEffect } from "react";
 import { useNotification } from "../NotificationContext";
 
 export const ReminderModal: React.FC<{
   invoice: Invoice;
-  company?: Company | null;
-  broker?: Broker | null;
+  Broker?: Broker | null;
+  Company?: Company | null;
   onClose: () => void;
 }> = ({ invoice, onClose }) => {
   const [letter, setLetter] = useState("");

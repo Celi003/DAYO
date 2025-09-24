@@ -2,14 +2,14 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import {
-  getBrokers,
+  getCompanys,
   getCompanies,
-  createBroker,
-  updateBroker,
-  deleteBroker,
   createCompany,
   updateCompany,
   deleteCompany,
+  createBroker,
+  updateBroker,
+  deleteBroker,
 } from "../services/api";
 import { useNotification } from "../components/NotificationContext";
 import { useApi } from "../services/api";
@@ -17,8 +17,8 @@ import ConfirmModal from "../components/Modal";
 
 const Entities: React.FC = () => {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"brokers" | "companies">("brokers");
-  const [brokers, setBrokers] = useState<any[]>([]);
+  const [tab, setTab] = useState<"Companys" | "companies">("Companys");
+  const [Companys, setCompanys] = useState<any[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [confirm, setConfirm] = useState<{
@@ -29,33 +29,33 @@ const Entities: React.FC = () => {
   const { notify } = useNotification();
   const { call } = useApi();
 
-  // Brokers
+  // Companys
   useEffect(() => {
-    if (tab === "brokers") fetchBrokers();
+    if (tab === "Companys") fetchCompanys();
   }, [tab]);
-  const fetchBrokers = async () => {
+  const fetchCompanys = async () => {
     setLoading(true);
-    const data = await call(() => getBrokers());
-    if (data) setBrokers(data);
+    const data = await call(() => getCompanys());
+    if (data) setCompanys(data);
     setLoading(false);
   };
-  const handleAddBroker = async (data: any) => {
-    await call(() => createBroker(data), "Courtier ajouté");
-    fetchBrokers();
+  const handleAddCompany = async (data: any) => {
+    await call(() => createCompany(data), "Compagnie ajouté");
+    fetchCompanys();
   };
-  const handleUpdateBroker = async (id: string, data: any) => {
-    await call(() => updateBroker(id, data), "Courtier modifié");
-    fetchBrokers();
+  const handleUpdateCompany = async (id: string, data: any) => {
+    await call(() => updateCompany(id, data), "Compagnie modifié");
+    fetchCompanys();
   };
-  const handleDeleteBroker = (id: string) => {
+  const handleDeleteCompany = (id: string) => {
     setConfirm({
       open: true,
       onConfirm: async () => {
-        await call(() => deleteBroker(id), "Courtier supprimé");
-        fetchBrokers();
+        await call(() => deleteCompany(id), "Compagnie supprimé");
+        fetchCompanys();
         setConfirm({ ...confirm, open: false });
       },
-      message: "Confirmer la suppression de ce courtier ?",
+      message: "Confirmer la suppression de ce Compagnie ?",
     });
   };
 
@@ -69,23 +69,23 @@ const Entities: React.FC = () => {
     if (data) setCompanies(data);
     setLoading(false);
   };
-  const handleAddCompany = async (data: any) => {
-    await call(() => createCompany(data), "Compagnie ajoutée");
+  const handleAddBroker = async (data: any) => {
+    await call(() => createBroker(data), "Courtier ajoutée");
     fetchCompanies();
   };
-  const handleUpdateCompany = async (id: string, data: any) => {
-    await call(() => updateCompany(id, data), "Compagnie modifiée");
+  const handleUpdateBroker = async (id: string, data: any) => {
+    await call(() => updateBroker(id, data), "Courtier modifiée");
     fetchCompanies();
   };
-  const handleDeleteCompany = (id: string) => {
+  const handleDeleteBroker = (id: string) => {
     setConfirm({
       open: true,
       onConfirm: async () => {
-        await call(() => deleteCompany(id), "Compagnie supprimée");
+        await call(() => deleteBroker(id), "Courtier supprimée");
         fetchCompanies();
         setConfirm({ open: false, onConfirm: () => {}, message: "" });
       },
-      message: "Confirmer la suppression de cette compagnie ?",
+      message: "Confirmer la suppression de cette Courtier ?",
     });
   };
 
@@ -129,13 +129,13 @@ const Entities: React.FC = () => {
       <div className="flex border-b">
         <button
           className={`py-2 px-4 text-sm font-medium ${
-            tab === "brokers"
+            tab === "Companys"
               ? "border-b-2 border-blue-600 text-blue-600"
               : "text-slate-500 hover:text-slate-700"
           }`}
-          onClick={() => setTab("brokers")}
+          onClick={() => setTab("Companys")}
         >
-          Courtiers
+          Compagnies
         </button>
         <button
           className={`py-2 px-4 text-sm font-medium ${
@@ -145,7 +145,7 @@ const Entities: React.FC = () => {
           }`}
           onClick={() => setTab("companies")}
         >
-          Compagnies
+          Courtiers
         </button>
       </div>
       {loading && (
@@ -153,23 +153,23 @@ const Entities: React.FC = () => {
           <div className="w-8 h-8 border-4 border-dashed rounded-full animate-spin border-slate-500"></div>
         </div>
       )}
-      {!loading && tab === "brokers" && (
+      {!loading && tab === "Companys" && (
         <EntityTable
-          data={brokers}
-          onAdd={handleAddBroker}
-          onUpdate={handleUpdateBroker}
-          onDelete={handleDeleteBroker}
-          type="Courtier"
+          data={Companys}
+          onAdd={handleAddCompany}
+          onUpdate={handleUpdateCompany}
+          onDelete={handleDeleteCompany}
+          type="Compagnie"
         />
       )}
       {!loading && tab === "companies" && (
         <EntityTable
           data={companies}
-          brokers={brokers}
-          onAdd={handleAddCompany}
-          onUpdate={handleUpdateCompany}
-          onDelete={handleDeleteCompany}
-          type="Compagnie"
+          Companys={Companys}
+          onAdd={handleAddBroker}
+          onUpdate={handleUpdateBroker}
+          onDelete={handleDeleteBroker}
+          type="Courtier"
         />
       )}
     </div>
@@ -178,12 +178,12 @@ const Entities: React.FC = () => {
 
 const EntityTable: React.FC<{
   data: any[];
-  brokers?: any[];
+  Companys?: any[];
   onAdd: (data: any) => void;
   onUpdate: (id: string, data: any) => void;
   onDelete: (id: string) => void;
   type: string;
-}> = ({ data, brokers, onAdd, onUpdate, onDelete, type }) => {
+}> = ({ data, Companys, onAdd, onUpdate, onDelete, type }) => {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<any>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -198,16 +198,16 @@ const EntityTable: React.FC<{
 
   const getFields = () => {
     switch (type) {
-      case "Courtier":
+      case "Compagnie":
         return { 
           name: "text",
           email: "email"
         };
-      case "Compagnie":
+      case "Courtier":
         return {
           name: "text",
           contact_email: "email",
-          broker_ids: "select_multiple_brokers",
+          Company_ids: "select_multiple_Companys",
         };
       default:
         return {};
@@ -219,8 +219,8 @@ const EntityTable: React.FC<{
   const validate = () => {
     const errs: Record<string, string> = {};
     for (const k of fieldNames) {
-      if (k === "broker_ids") {
-        // broker_ids is optional for companies
+      if (k === "Company_ids") {
+        // Company_ids is optional for companies
         continue;
       }
       if (!form[k] || form[k].toString().trim() === "") {
@@ -242,15 +242,15 @@ const EntityTable: React.FC<{
     e.preventDefault();
     if (!validate()) return;
     let dataToSend = { ...form };
-    if (type === "Compagnie") {
-      // Convert broker_ids array to the format expected by the API
-      if (form.broker_ids && Array.isArray(form.broker_ids)) {
-        dataToSend.broker_ids = form.broker_ids;
-      } else if (form.broker_ids) {
+    if (type === "Courtier") {
+      // Convert Company_ids array to the format expected by the API
+      if (form.Company_ids && Array.isArray(form.Company_ids)) {
+        dataToSend.Company_ids = form.Company_ids;
+      } else if (form.Company_ids) {
         // If it's a single value, convert to array
-        dataToSend.broker_ids = [form.broker_ids];
+        dataToSend.Company_ids = [form.Company_ids];
       } else {
-        dataToSend.broker_ids = [];
+        dataToSend.Company_ids = [];
       }
     }
     if (editId) onUpdate(editId, dataToSend);
@@ -288,13 +288,13 @@ const EntityTable: React.FC<{
   const handleStartEdit = (item: any) => {
     setEditId(item.id);
     const formData: any = {};
-    // For company, brokers is an array of objects in data, but form needs broker_ids array
+    // For Broker, Companys is an array of objects in data, but form needs Company_ids array
     if (
-      type === "Compagnie" &&
-      item.brokers &&
-      Array.isArray(item.brokers)
+      type === "Courtier" &&
+      item.Companys &&
+      Array.isArray(item.Companys)
     ) {
-      formData.broker_ids = item.brokers.map((broker: any) => broker.id);
+      formData.Company_ids = item.Companys.map((Company: any) => Company.id);
     }
     setForm({ ...item, ...formData });
   };
@@ -313,7 +313,7 @@ const EntityTable: React.FC<{
             <label className="text-sm font-medium text-slate-600 mb-1 capitalize">
               {k.replace("_", " ")}
             </label>
-            {(fields as any)[k] === "select_broker" ? (
+            {(fields as any)[k] === "select_Company" ? (
               <select
                 value={form[k] || ""}
                 onChange={(e) => setForm({ ...form, [k]: e.target.value })}
@@ -322,13 +322,13 @@ const EntityTable: React.FC<{
                 }`}
               >
                 <option value="">Choisir...</option>
-                {brokers?.map((b) => (
+                {Companys?.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
                   </option>
                 ))}
               </select>
-            ) : (fields as any)[k] === "select_multiple_brokers" ? (
+            ) : (fields as any)[k] === "select_multiple_Companys" ? (
               <select
                 multiple
                 value={Array.isArray(form[k]) ? form[k] : []}
@@ -340,7 +340,7 @@ const EntityTable: React.FC<{
                   errors[k] ? "border-red-500" : "border-slate-300"
                 }`}
               >
-                {brokers?.map((b) => (
+                {Companys?.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
                   </option>
@@ -416,9 +416,9 @@ const EntityTable: React.FC<{
                     {k} {sort.col === k ? (sort.asc ? "▲" : "▼") : ""}
                   </th>
                 ))}
-              {type === "Compagnie" && (
+              {type === "Courtier" && (
                 <th className="p-3 text-left text-sm font-semibold text-slate-600">
-                  Courtiers
+                  Compagnies
                 </th>
               )}
               <th className="p-3 text-left text-sm font-semibold text-slate-600">
@@ -436,10 +436,10 @@ const EntityTable: React.FC<{
                       {item[k]}
                     </td>
                   ))}
-                {type === "Compagnie" && (
+                {type === "Courtier" && (
                   <td className="p-3">
-                    {item.brokers && item.brokers.length > 0 
-                      ? item.brokers.map((broker: any) => broker.name).join(", ")
+                    {item.Companys && item.Companys.length > 0 
+                      ? item.Companys.map((Company: any) => Company.name).join(", ")
                       : "-"
                     }
                   </td>

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Invoice, Company, Broker } from '../types';
+import { Invoice } from '../types';
 import { addPayment, addRejection, generateReclamationLetter } from '../services/api';
 import Modal from './Modal';
 import { useApi } from '../services/api';
@@ -8,8 +8,6 @@ import { formatCurrency } from '../utils/helpers';
 
 interface InvoiceDetailModalProps {
     invoice: Invoice;
-    company?: Company | null;
-    broker?: Broker | null;
     onClose: () => void;
     onUpdate: (updatedInvoice: Invoice) => void;
     userRole?: string;
@@ -144,7 +142,7 @@ const TransactionForm: React.FC<{ invoiceId: number; onUpdate: (updatedInvoice: 
 }
 
 
-const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, company, broker, onClose, onUpdate, userRole }) => {
+const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, onClose, onUpdate, userRole }) => {
     
     const stats = useMemo(() => {
         const totalPaid = invoice.payments!.reduce((sum, p) => sum + p.amount, 0);
@@ -153,7 +151,10 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
         return { totalPaid, totalRejected, outstanding };
     }, [invoice]);
 
-    const title = `Détails de la facture #${String(invoice.id).toUpperCase()}`;
+    const entityLabel = invoice.Broker?.name && invoice.Company?.name
+        ? `${invoice.Broker.name} (${invoice.Company.name})`
+        : (invoice.Broker?.name || invoice.Company?.name || 'N/A');
+    const title = `Détails de la facture`;
     
     const [reclamationLetter, setReclamationLetter] = useState<string | null>(null);
     const [isLoadingLetter, setIsLoadingLetter] = useState(false);
@@ -174,18 +175,10 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
         <Modal isOpen={true} onClose={onClose} title={title}>
             {/* Summary */}
             <div className="bg-slate-50 p-4 rounded-lg mb-6">
-                {company && (
                 <div className="flex justify-between items-center mb-2">
-                    <p className="text-slate-600">Compagnie:</p>
-                    <p className="font-bold text-lg">{company.name}</p>
+                    <p className="text-slate-600">Entité:</p>
+                    <p className="font-bold text-lg">{entityLabel}</p>
                 </div>
-                )}
-                {broker && (
-                  <div className="flex justify-between items-center mb-2">
-                      <p className="text-slate-600">Courtier:</p>
-                      <p className="font-semibold">{broker.name}</p>
-                  </div>
-                )}
                  <div className="flex justify-between items-center mb-4">
                     <p className="text-slate-600">Mois de la facture:</p>
                     <p className="font-semibold">{invoice.invoice_month}</p>

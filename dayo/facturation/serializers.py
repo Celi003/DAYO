@@ -1,8 +1,16 @@
 from rest_framework import serializers
 from .models import *
+from django.contrib.auth.models import User
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    def validate(self, attrs):
+        request = self.context.get('request')
+        role = attrs.get('role')
+        if role == 'ADMIN':
+            if not request or not getattr(request.user, 'is_superuser', False):
+                raise serializers.ValidationError({'role': 'Only superusers can assign ADMIN role.'})
+        return attrs
     username = serializers.CharField(source='user.username', read_only=True)
     permissions = serializers.ListField(child=serializers.CharField(), source='user.get_all_permissions', read_only=True)
     isActive = serializers.BooleanField(source='is_active', read_only=False)
@@ -47,27 +55,33 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 class ProviderSerializer(serializers.ModelSerializer):
-    user = UserProfileSerializer(read_only=True)
-    user_id = serializers.IntegerField(source='user.user.id', read_only=True)
+    # Expose a lightweight user object so frontend can reliably match provider.user.id
+    class SimpleUserSerializer(serializers.ModelSerializer):
+        class Meta:
+            model = User
+            fields = ['id', 'username']
+
+    user = SimpleUserSerializer(read_only=True)
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
 
     class Meta:
         model = Provider
         fields = ['id', 'name', 'user', 'user_id', 'subscription_status', 'subscription_expiry']
 
 
-class BrokerSerializer(serializers.ModelSerializer):
+class CompanySerializer(serializers.ModelSerializer):
     class Meta:
-        model = Broker
+        model = Company
         fields = ['id', 'name', 'email']
 
 
-class CompanySerializer(serializers.ModelSerializer):
-    brokers = BrokerSerializer(many=True, read_only=True)
-    broker_ids = serializers.PrimaryKeyRelatedField(queryset=Broker.objects.all(), source='brokers', write_only=True, many=True, required=False)
+class BrokerSerializer(serializers.ModelSerializer):
+    Companys = CompanySerializer(many=True, read_only=True)
+    Company_ids = serializers.PrimaryKeyRelatedField(queryset=Company.objects.all(), source='Companys', write_only=True, many=True, required=False)
 
     class Meta:
-        model = Company
-        fields = ['id', 'name', 'brokers', 'broker_ids', 'contact_email']
+        model = Broker
+        fields = ['id', 'name', 'Companys', 'Company_ids', 'contact_email']
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -84,11 +98,12 @@ class RejectionSerializer(serializers.ModelSerializer):
 
 class InvoiceSerializer(serializers.ModelSerializer):
     provider = ProviderSerializer(read_only=True)
-    provider_id = serializers.PrimaryKeyRelatedField(queryset=Provider.objects.all(), source='provider', write_only=True)
-    broker = BrokerSerializer(read_only=True)
-    broker_id = serializers.PrimaryKeyRelatedField(queryset=Broker.objects.all(), source='broker', write_only=True, required=False, allow_null=True)
-    company = CompanySerializer(read_only=True)
-    company_id = serializers.PrimaryKeyRelatedField(queryset=Company.objects.all(), source='company', write_only=True, required=False, allow_null=True)
+    provider_id = serializers.PrimaryKeyRelatedField(queryset=Provider.objects.all(), source='provider', write_only=True, required=False, allow_null=True)
+    # IMPORTANT: model fields are 'Company' and 'Broker'; map read-only fields correctly
+    company = CompanySerializer(read_only=True, source='Company')
+    company_id = serializers.PrimaryKeyRelatedField(queryset=Company.objects.all(), source='Company', write_only=True, required=False, allow_null=True)
+    broker = BrokerSerializer(read_only=True, source='Broker')
+    broker_id = serializers.PrimaryKeyRelatedField(queryset=Broker.objects.all(), source='Broker', write_only=True, required=False, allow_null=True)
     payments = PaymentSerializer(many=True, read_only=True)
     rejections = RejectionSerializer(many=True, read_only=True)
     remaining_amount = serializers.SerializerMethodField()
@@ -97,7 +112,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = [
-            'id', 'provider', 'provider_id', 'broker', 'broker_id', 'company', 'company_id',
+            'id', 'provider', 'provider_id', 'company', 'company_id', 'broker', 'broker_id',
             'invoice_number',
             'deposit_date',
             'invoice_month', 'billed_amount', 'paid_amount', 'status',

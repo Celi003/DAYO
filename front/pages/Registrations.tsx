@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { User, Invoice } from "../types";
 import InvoiceDetailModal from "../components/InvoiceDetailModal";
 import useRegistrations from "@/hooks/useRegistrations";
@@ -25,9 +25,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
     handleDownloadTemplate,
     handleImport,
     companies,
-    brokers,
-    companyMap,
-    brokerMap,
+    Companys,
     handleAddInvoice,
     handleUpdateInvoice,
     invoiceForReminder,
@@ -115,7 +113,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
       {user.role === "provider" && (
         <AddInvoiceForm
           companies={companies}
-          brokers={brokers}
+          Companys={Companys}
           providerId={partnerId}
           onAddInvoice={handleAddInvoice}
           user={user}
@@ -128,7 +126,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
         <InvoiceTable
           invoices={invoices}
           companies={companies}
-          brokers={brokers}
+          Companys={Companys}
           user={user}
           onDetails={setInvoiceForDetails}
           onReminder={setInvoiceForReminder}
@@ -145,24 +143,12 @@ const Registrations: React.FC<RegistrationsProps> = ({
       {invoiceForReminder && (
         <ReminderModal
           invoice={invoiceForReminder}
-          company={invoiceForReminder.company?.id ? companyMap.get(invoiceForReminder.company.id) || null : null}
-          broker={
-            invoiceForReminder.broker?.id
-              ? brokerMap.get(invoiceForReminder.broker.id) || null
-              : null
-          }
           onClose={() => setInvoiceForReminder(null)}
         />
       )}
       {invoiceForDetails && (
         <InvoiceDetailModal
           invoice={invoiceForDetails}
-          company={invoiceForDetails.company?.id ? companyMap.get(invoiceForDetails.company.id) || null : null}
-          broker={
-            invoiceForDetails.broker?.id
-              ? brokerMap.get(invoiceForDetails.broker.id) || null
-              : null
-          }
           onClose={() => setInvoiceForDetails(null)}
           onUpdate={handleUpdateInvoice}
           userRole={user.role}
