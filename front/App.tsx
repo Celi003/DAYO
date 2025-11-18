@@ -18,6 +18,7 @@ const Entities = React.lazy(() => import('./pages/Entities'));
 const PaymentDetails = React.lazy(() => import('./pages/PaymentDetails'));
 const AuditLog = React.lazy(() => import('./pages/AuditLog'));
 const Notifications = React.lazy(() => import('./pages/Notifications'));
+const ExportPreview = React.lazy(() => import('./pages/ExportPreview'));
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -181,6 +182,14 @@ const App: React.FC = () => {
                 element={
                   <Layout>
                     <AuditLog />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/export-preview"
+                element={
+                  <Layout>
+                    <ExportPreview />
                   </Layout>
                 }
               />

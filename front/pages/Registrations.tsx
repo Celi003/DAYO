@@ -35,6 +35,7 @@ const Registrations: React.FC<RegistrationsProps> = ({
     filters,
     handleFilterChange,
     loading,
+    serverPdfLoading,
     setSearch,
     setInvoiceForDetails,
     resetFilters,
@@ -82,10 +83,18 @@ const Registrations: React.FC<RegistrationsProps> = ({
 
             <button
               onClick={() => handleExport("pdf")}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors shadow-sm"
+              disabled={serverPdfLoading}
+              className={`inline-flex items-center gap-2 px-4 py-2.5 ${serverPdfLoading ? 'bg-red-400 cursor-wait' : 'bg-red-600 hover:bg-red-700'} text-white font-medium rounded-lg transition-colors shadow-sm`}
             >
-              <FileText className="w-4 h-4" />
-              <span className="hidden sm:inline">Exporter PDF</span>
+              {serverPdfLoading ? (
+                <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                </svg>
+              ) : (
+                <FileText className="w-4 h-4" />
+              )}
+              <span className="hidden sm:inline">{serverPdfLoading ? 'Génération PDF...' : 'Exporter PDF'}</span>
             </button>
 
             <button

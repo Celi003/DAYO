@@ -20,6 +20,10 @@ from .serializers import *
 from .permissions import *
 from .task import *
 from .models import AuditLog, Notification
+from io import BytesIO
+import openpyxl
+import os
+from .pdf_views import _build_rows_from_db
 
 
 class LoginView(APIView):
@@ -936,12 +940,16 @@ class CreateSubadminView(APIView):
 
 
 class ExportView(APIView):
-    permission_classes = [IsAuthenticated, IsActiveProvider | IsAdmin]
+    # Use the composed permission which already checks authentication and active/provider/admin roles
+    permission_classes = [IsAdminOrActiveProvider]
     
     def get(self, request):
         print("Export function called!")
         print(f"Request user: {request.user}")
         print(f"Query params: {request.query_params}")
+        # Debug headers that may affect CORS/auth behavior
+        print("HTTP_ORIGIN:", request.META.get('HTTP_ORIGIN'))
+        print("HTTP_AUTHORIZATION:", request.META.get('HTTP_AUTHORIZATION'))
         
         # Récupérer le format d'export
         format_type = request.query_params.get('format', 'excel')
@@ -958,112 +966,293 @@ class ExportView(APIView):
         
         print(f"Filters: Broker={Broker_filter}, status={status_filter}, search={search}")
         
-        # Construire le queryset avec les filtres
-        user = request.user
-        queryset = Invoice.objects.select_related('provider', 'Broker', 'Company').prefetch_related('payments', 'rejections')
-        
-        if user.userprofile.role != 'ADMIN':
-            queryset = queryset.filter(provider__user=user)
-        
-        if Broker_filter:
-            queryset = queryset.filter(Broker__name=Broker_filter)
-        
-        if status_filter:
-            if status_filter == 'PAID':
-                queryset = queryset.filter(status='PAID')
-            elif status_filter == 'PARTIAL':
-                queryset = queryset.filter(status='PARTIAL')
-            elif status_filter == 'PENDING':
-                queryset = queryset.filter(status='PENDING')
-            elif status_filter == 'REJECTED':
-                queryset = queryset.filter(status='REJECTED')
-        
-        if date_min:
-            queryset = queryset.filter(deposit_date__gte=date_min)
-        
-        if date_max:
-            queryset = queryset.filter(deposit_date__lte=date_max)
-        
-        if amount_min:
-            queryset = queryset.filter(billed_amount__gte=float(amount_min))
-        
-        if amount_max:
-            queryset = queryset.filter(billed_amount__lte=float(amount_max))
-        
-        if search:
-            queryset = queryset.filter(
-                Q(invoice_number__icontains=search) |
-                Q(provider__name__icontains=search) |
-                Q(Broker__name__icontains=search) |
-                Q(Company__name__icontains=search)
-            )
-        
-        # Récupérer les données
-        invoices = list(queryset)
-        print(f"Found {len(invoices)} invoices")
-        
-        if format_type == 'excel':
-            return self._export_excel(invoices)
-        elif format_type == 'pdf':
-            return self._export_pdf(invoices)
+        # Build filters compatible with `_build_rows_from_db` and decide which template to use
+        filters = {}
+        for key in ('start_date', 'end_date', 'compagnie', 'courtier'):
+            v = request.query_params.get(key)
+            if v:
+                filters[key] = v
+
+        # Determine target grouping: allow explicit `target` param, else prefer query filters, default to 'compagnie'
+        target_param = request.query_params.get('target')
+        target = 'compagnie'
+        if target_param in ('compagnie', 'courtier'):
+            target = target_param
         else:
-            return Response({'error': 'Format non supporté'}, status=400)
-    
+            if 'courtier' in filters and filters.get('courtier'):
+                target = 'courtier'
+            elif 'compagnie' in filters and filters.get('compagnie'):
+                target = 'compagnie'
+
+        # Build rows using the same logic as the HTML/PDF endpoints
+        rows, summary = _build_rows_from_db(filters)
+
+        # Choose output based on requested format
+        if format_type == 'json':
+            return Response({'rows': rows, 'summary': summary})
+
+        if format_type == 'excel':
+            # If no explicit target and no entity filters, export both sheets
+            if not request.query_params.get('target') and not (filters.get('compagnie') or filters.get('courtier')):
+                # build workbook with two sheets rendered from templates (or fallback to rows)
+                wb = openpyxl.Workbook()
+                comp_rows = [r for r in rows if r.get('compagnie_name')]
+                court_rows = [r for r in rows if r.get('courtier_name')]
+
+                comp_sheet = wb.active
+                comp_sheet.title = 'Compagnies'
+                if not self._populate_sheet_from_html(comp_sheet, 'facturation/Compagnie.html', {'title': 'Etat de facturation - Compagnies', 'rows': comp_rows, 'summary': summary, 'filters': {}}):
+                    self._write_rows_to_sheet(comp_sheet, comp_rows, group='compagnie')
+
+                court_sheet = wb.create_sheet('Courtiers')
+                if not self._populate_sheet_from_html(court_sheet, 'facturation/Courtier.html', {'title': 'Etat de facturation - Courtiers', 'rows': court_rows, 'summary': summary, 'filters': {}}):
+                    self._write_rows_to_sheet(court_sheet, court_rows, group='courtier')
+
+                output = BytesIO()
+                wb.save(output)
+                output.seek(0)
+                response = HttpResponse(output.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                response['Content-Disposition'] = f'attachment; filename=Etat_Facturation_Compagnies_Courtiers.xlsx'
+                return response
+
+            return self._export_excel_from_template(rows, summary, group=target)
+
+        if format_type == 'pdf':
+            # Render HTML from template and convert to PDF using WeasyPrint
+            from django.template.loader import render_to_string
+            tmpl = 'facturation/Compagnie.html' if target == 'compagnie' else 'facturation/Courtier.html'
+            ctx = {'title': f"Etat de facturation - { 'Compagnies' if target=='compagnie' else 'Courtiers' }", 'rows': rows, 'summary': summary, 'filters': filters}
+            html = render_to_string(tmpl, ctx)
+            try:
+                from weasyprint import HTML
+                # If neither compagnie nor courtier filter provided and no explicit target, render both templates into one PDF
+                if not request.query_params.get('target') and not (filters.get('compagnie') or filters.get('courtier')):
+                    html_c = render_to_string('facturation/Compagnie.html', {'title': 'Etat de facturation - Compagnies', 'rows': [r for r in rows if r.get('compagnie_name')], 'summary': summary, 'filters': filters})
+                    html_k = render_to_string('facturation/Courtier.html', {'title': 'Etat de facturation - Courtiers', 'rows': [r for r in rows if r.get('courtier_name')], 'summary': summary, 'filters': filters})
+                    # simple concatenation with a page break
+                    combined = f"<div>{html_c}</div><div style='page-break-before: always'></div><div>{html_k}</div>"
+                    pdf = HTML(string=combined).write_pdf()
+                    resp = HttpResponse(pdf, content_type='application/pdf')
+                    resp['Content-Disposition'] = 'attachment; filename=etat_compagnies_courtiers.pdf'
+                    return resp
+                pdf = HTML(string=html).write_pdf()
+                resp = HttpResponse(pdf, content_type='application/pdf')
+                resp['Content-Disposition'] = f'attachment; filename=etat_{target}.pdf'
+                return resp
+            except Exception as e:
+                return Response({'error': f'PDF generation failed: {e}'}, status=500)
+
+        # default: return HTML (rendered template)
+        from django.template.loader import render_to_string
+        tmpl = 'facturation/Compagnie.html' if target == 'compagnie' else 'facturation/Courtier.html'
+        ctx = {'title': f"Etat de facturation - { 'Compagnies' if target=='compagnie' else 'Courtiers' }", 'rows': rows, 'summary': summary, 'filters': filters}
+        html = render_to_string(tmpl, ctx)
+        return HttpResponse(html, content_type='text/html')
+
+    # (PaymentsTemplateExportView removed) exports will use the HTML templates and the
+    # rows produced by `_build_rows_from_db` implemented in `pdf_views.py`.
     def _export_excel(self, invoices):
+        # Deprecated: keep for backward-compatibility but not used when exporting from HTML-driven rows
         workbook = openpyxl.Workbook()
         sheet = workbook.active
         sheet.title = "Factures"
-        
-        # En-têtes
-        headers = [
-            'ID', 'Numéro Facture', 'Prestataire', 'Entité',
-            'Mois Facture', 'Date Dépôt', 'Montant Facturé', 'Montant Payé',
-            'Montant Rejeté', 'Reste à Régler', 'Statut', 'Paiements', 'Rejets'
-        ]
-        
-        for col, header in enumerate(headers, 1):
-            sheet.cell(row=1, column=col, value=header)
-        
-        # Données
-        for row, invoice in enumerate(invoices, 2):
-            # Calculer les montants
-            total_paid = sum(payment.amount for payment in invoice.payments.all())
-            total_rejected = sum(rejection.rejected_amount for rejection in invoice.rejections.all())
-            remaining = invoice.billed_amount - total_paid - total_rejected
-            
-            # Formater les paiements et rejets
-            payments_str = '; '.join([f"{p.amount} ({p.payment_date})" for p in invoice.payments.all()])
-            rejections_str = '; '.join([f"{r.rejected_amount} ({r.rejection_reason})" for r in invoice.rejections.all()])
-            
-            entity = (
-                f"{invoice.Broker.name} ({invoice.Company.name})" if invoice.Broker and invoice.Company
-                else (invoice.Broker.name if invoice.Broker else (invoice.Company.name if invoice.Company else 'N/A'))
-            )
-            data = [
-                invoice.id,
-                invoice.invoice_number,
-                invoice.provider.name if invoice.provider else 'N/A',
-                entity,
-                invoice.invoice_month,
-                invoice.deposit_date,
-                invoice.billed_amount,
-                total_paid,
-                total_rejected,
-                remaining,
-                invoice.status,
-                payments_str,
-                rejections_str
-            ]
-            
-            for col, value in enumerate(data, 1):
-                sheet.cell(row=row, column=col, value=value)
-        
-        # Créer la réponse
+        sheet.cell(row=1, column=1, value='ID')
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         response['Content-Disposition'] = 'attachment; filename=factures.xlsx'
         workbook.save(response)
+        return response
+
+    def _export_excel_from_rows(self, rows, summary, group='compagnie'):
+        """Build an Excel workbook from the `rows` structure produced by `_build_rows_from_db`.
+
+        Each `inv` in `rows` should include `lines` (list of dicts with p_amount, p_date, r_amount, r_reason).
+        The first line includes invoice identifiers; subsequent lines are sub-lines for payments/rejections.
+        """
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        title = 'Compagnies' if group == 'compagnie' else 'Courtiers'
+        sheet.title = title
+
+        # Headers similar to HTML table
+        if group == 'compagnie':
+            headers = [
+                'N° facture', 'Date dépôt', 'Mois facture', 'Compagnie', 'Sous-compagnie',
+                'Montant facturé', 'Montant payé', 'Montant rejeté', 'Date(s) paiements',
+                'Solde à percevoir', 'Dernier statut', 'Motif rejet'
+            ]
+        else:
+            headers = [
+                'N° facture', 'Date dépôt', 'Mois facture', 'Courtier', 'Sous-compagnie',
+                'Montant facturé', 'Montant payé', 'Montant rejeté', 'Date(s) paiements',
+                'Solde à percevoir', 'Dernier statut', 'Motif rejet'
+            ]
+
+        for col, header in enumerate(headers, 1):
+            sheet.cell(row=1, column=col, value=header)
+
+        out_row = 2
+        for inv in rows:
+            lines = inv.get('lines') or [{'p_amount': '', 'p_date': '', 'r_amount': '', 'r_reason': ''}]
+            for i, line in enumerate(lines):
+                if i == 0:
+                    first_cols = [
+                        inv.get('invoice_number', ''),
+                        inv.get('deposit_date', ''),
+                        inv.get('invoice_month', ''),
+                        (inv.get('compagnie_name') if group == 'compagnie' else inv.get('courtier_name')) or '',
+                        inv.get('sous_compagnie', '') or '',
+                        float(inv.get('montant_facture') or 0),
+                    ]
+                else:
+                    first_cols = [''] * 6
+
+                paid = float(line.get('p_amount') or 0) if line.get('p_amount') not in (None, '') else ''
+                rejected = float(line.get('r_amount') or 0) if line.get('r_amount') not in (None, '') else ''
+                paid_date = line.get('p_date', '')
+                remaining = float(inv.get('remaining') or 0) if i == 0 else ''
+                status = inv.get('status', '') if i == 0 else ''
+                motif = line.get('r_reason', '')
+
+                row_vals = first_cols + [paid, rejected, paid_date, remaining, status, motif]
+                for col, val in enumerate(row_vals, 1):
+                    sheet.cell(row=out_row, column=col, value=val)
+                out_row += 1
+
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        response = HttpResponse(output.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename=Etat_Facturation_{title}.xlsx'
+        return response
+
+    def _populate_sheet_from_html(self, sheet, tmpl, ctx):
+        """Render `tmpl` with `ctx` and try to parse the first HTML table into `sheet`.
+        Returns True on success, False on failure (caller should fallback).
+        """
+        try:
+            from django.template.loader import render_to_string
+            html = render_to_string(tmpl, ctx)
+            # import BeautifulSoup lazily (may not be installed)
+            try:
+                from bs4 import BeautifulSoup
+            except Exception:
+                return False
+
+            soup = BeautifulSoup(html, "html.parser")
+            table = soup.find("table")
+            if not table:
+                return False
+
+            out_row = 1
+            for tr in table.find_all("tr"):
+                cols = tr.find_all(["th", "td"])
+                out_col = 1
+                for c in cols:
+                    # Normalize whitespace
+                    text = " ".join(c.get_text(separator=" ").split())
+                    sheet.cell(row=out_row, column=out_col, value=text)
+                    out_col += 1
+                out_row += 1
+            return True
+        except Exception:
+            return False
+
+    def _export_excel_from_template(self, rows, summary, group='compagnie'):
+        """Attempt to build an XLSX by rendering the HTML template and parsing its table.
+        Falls back to `_export_excel_from_rows` if parsing isn't possible.
+        """
+        from django.template.loader import render_to_string
+
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        title = 'Compagnies' if group == 'compagnie' else 'Courtiers'
+        sheet.title = title
+
+        tmpl = 'facturation/Compagnie.html' if group == 'compagnie' else 'facturation/Courtier.html'
+        ctx = {'title': f"Etat de facturation - {title}", 'rows': rows, 'summary': summary, 'filters': {}}
+
+        populated = self._populate_sheet_from_html(sheet, tmpl, ctx)
+        if not populated:
+            # fallback to the robust row-based writer
+            self._write_rows_to_sheet(sheet, rows, group=group)
+
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        response = HttpResponse(output.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename=Etat_Facturation_{title}.xlsx'
+        return response
+
+    def _write_rows_to_sheet(self, sheet, rows, group='compagnie'):
+        """Write rows into the provided openpyxl sheet using the same layout as templates."""
+        # Headers similar to HTML table
+        if group == 'compagnie':
+            headers = [
+                'N° facture', 'Date dépôt', 'Mois facture', 'Compagnie', 'Sous-compagnie',
+                'Montant facturé', 'Montant payé', 'Montant rejeté', 'Date(s) paiements',
+                'Solde à percevoir', 'Dernier statut', 'Motif rejet'
+            ]
+        else:
+            headers = [
+                'N° facture', 'Date dépôt', 'Mois facture', 'Courtier', 'Sous-compagnie',
+                'Montant facturé', 'Montant payé', 'Montant rejeté', 'Date(s) paiements',
+                'Solde à percevoir', 'Dernier statut', 'Motif rejet'
+            ]
+
+        for col, header in enumerate(headers, 1):
+            sheet.cell(row=1, column=col, value=header)
+
+        out_row = 2
+        for inv in rows:
+            lines = inv.get('lines') or [{'p_amount': '', 'p_date': '', 'r_amount': '', 'r_reason': ''}]
+            for i, line in enumerate(lines):
+                if i == 0:
+                    first_cols = [
+                        inv.get('invoice_number', ''),
+                        inv.get('deposit_date', ''),
+                        inv.get('invoice_month', ''),
+                        (inv.get('compagnie_name') if group == 'compagnie' else inv.get('courtier_name')) or '',
+                        inv.get('sous_compagnie', '') or '',
+                        float(inv.get('montant_facture') or 0),
+                    ]
+                else:
+                    first_cols = [''] * 6
+
+                paid = float(line.get('p_amount') or 0) if line.get('p_amount') not in (None, '') else ''
+                rejected = float(line.get('r_amount') or 0) if line.get('r_amount') not in (None, '') else ''
+                paid_date = line.get('p_date', '')
+                remaining = float(inv.get('remaining') or 0) if i == 0 else ''
+                status = inv.get('status', '') if i == 0 else ''
+                motif = line.get('r_reason', '')
+
+                row_vals = first_cols + [paid, rejected, paid_date, remaining, status, motif]
+                for col, val in enumerate(row_vals, 1):
+                    sheet.cell(row=out_row, column=col, value=val)
+                out_row += 1
+
+    def _export_excel_multi(self, rows, summary):
+        """Create an Excel workbook with two sheets: Compagnies and Courtiers, populated from rows."""
+        wb = openpyxl.Workbook()
+        # Prepare filtered rows
+        comp_rows = [r for r in rows if r.get('compagnie_name')]
+        court_rows = [r for r in rows if r.get('courtier_name')]
+
+        # Compagnie sheet
+        comp_sheet = wb.active
+        comp_sheet.title = 'Compagnies'
+        self._write_rows_to_sheet(comp_sheet, comp_rows, group='compagnie')
+
+        # Courtier sheet
+        court_sheet = wb.create_sheet('Courtiers')
+        self._write_rows_to_sheet(court_sheet, court_rows, group='courtier')
+
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        response = HttpResponse(output.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename=Etat_Facturation_Compagnies_Courtiers.xlsx'
         return response
     
     def _export_pdf(self, invoices):
@@ -1116,3 +1305,28 @@ class ExportView(APIView):
         elements.append(table)
         doc.build(elements)
         return response
+
+
+def export_fallback(request):
+    """Django view wrapper that authenticates via Token and delegates to ExportView.get.
+    Preserves token auth and permission checks while avoiding DRF content-negotiation
+    that caused 404s for some Accept/Origin header combinations.
+    """
+    from rest_framework.authentication import TokenAuthentication
+    from rest_framework.request import Request
+
+    auth = TokenAuthentication()
+    auth_result = auth.authenticate(request)
+    if auth_result is None:
+        return HttpResponse(status=401)
+    user, token = auth_result
+    request.user = user
+
+    perm = IsAdminOrActiveProvider()
+    dummy_view = ExportView()
+    if not perm.has_permission(request, dummy_view):
+        return HttpResponse(status=403)
+
+    drf_request = Request(request)
+    view = ExportView()
+    return view.get(drf_request)

@@ -310,10 +310,30 @@ export const getInvoiceStatistics = async (params: Record<string, string | numbe
 // EXPORT
 export const exportInvoices = async (format: 'excel' | 'pdf', params: Record<string, string | number> = {}) => {
   const query = new URLSearchParams({ ...params, format }).toString();
-  const res = await fetch(`${API_BASE}/export/?${query}`, { headers: getHeaders(false) });
+  const headers = getHeaders(false);
+  // Prevent the browser's default Accept header from triggering content-negotiation issues
+  // that can cause a 404 in some server setups. Use a permissive Accept.
+  headers['Accept'] = '*/*';
+  const res = await fetch(`${API_BASE}/export/?${query}`, { headers });
   if (!res.ok) throw new Error('Erreur lors de l\'export');
   const blob = await res.blob();
   return blob;
+};
+
+// Export enregistrements via le template serveur
+// Deprecated: previously used template-based XLSX endpoint. Use `exportInvoices('excel', params)` instead.
+export const exportRegistrationsTemplate = async (params: Record<string, string | number> = {}) => {
+  return exportInvoices('excel', params);
+};
+
+// Export registrations as PDF via server-side rendering
+export const exportRegistrationsPdf = async (
+  sheet: 'compagnie' | 'courtier',
+  params: Record<string, string | number> = {}
+) => {
+  // Use unified export endpoint with format=pdf and target param
+  const merged = { ...params, target: sheet } as Record<string, string | number>;
+  return exportInvoices('pdf', merged);
 };
 
 // IMPORT
