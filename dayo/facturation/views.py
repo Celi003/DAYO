@@ -23,7 +23,6 @@ from .models import AuditLog, Notification
 from io import BytesIO
 import openpyxl
 import os
-from .pdf_views import _build_rows_from_db
 
 
 class LoginView(APIView):
@@ -650,23 +649,36 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     def download_template(self, request):
         workbook = openpyxl.Workbook()
 
-        # Companys Sheet
-        sheet = workbook.create_sheet('Companys')
+        # Compagnies Sheet (list of insurance companies)
+        sheet = workbook.create_sheet('Compagnies')
         sheet.append(['Name'])
         # sheet.append(['DAYO'])  # Example data
         # sheet.append(['OLEA'])
 
-        # Companies Sheet
-        sheet = workbook.create_sheet('Companies')
+        # Courtiers Sheet (list of brokers)
+        sheet = workbook.create_sheet('Courtiers')
         sheet.append(['Name', 'Company Name', 'Contact Email'])
         # sheet.append(['NSIA', 'DAYO', 'nsia@example.com'])
         # sheet.append(['SUNU', 'DAYO', 'sunu@example.com'])
 
-        # Invoices Sheet
+        # Invoices Sheet (expanded template to support deposit date, multiple payments and rejections)
         sheet = workbook.create_sheet('Invoices')
-        sheet.append(['Provider Name', 'Company Name', 'Broker Name', 'Invoice Number', 'Invoice Month (YYYY-MM)',
-                      'Billed Amount', 'Paid Amount', 'Status'])
-        # sheet.append(['Provider1', 'DAYO', 'NSIA', 'INV001', '2025-01', 150000, 100000, 'PARTIAL'])
+        sheet.append([
+            'Provider Name',
+            'Company Name',
+            'Broker Name',
+            'Invoice Number',
+            'Deposit Date (YYYY-MM-DD)',
+            'Invoice Month (YYYY-MM)',
+            'Billed Amount',
+            'Paid Amounts (comma separated)',
+            'Paid Dates (comma separated, same order)',
+            'Rejected Amounts (comma separated)',
+            'Rejected Reasons (comma separated)',
+            'Status'
+        ])
+        # Example row:
+        # sheet.append(['Provider1', 'DAYO', 'NSIA', 'INV001', '2025-01-05', '2025-01', 150000, '50000,50000', '2025-01-10,2025-02-01', '0', '', 'PARTIAL'])
 
         # Remove default sheet
         workbook.remove(workbook['Sheet'])
@@ -677,7 +689,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return response
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsActiveProvider | IsAdmin])
-    def import_data(self, request, status=None):
+    def import_data(self, request):
         if 'file' not in request.FILES:
             return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -693,11 +705,12 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         errors = []
         created_records = {'Companys': 0, 'companies': 0, 'invoices': 0}
 
-        # Import Companys
-        if 'Companys' in workbook.sheetnames:
-            sheet = workbook['Companys']
+        # Import Companies / Compagnies (support old 'Companys' name and new 'Compagnies')
+        comp_sheet_names = [n for n in ('Compagnies', 'Companys') if n in workbook.sheetnames]
+        if comp_sheet_names:
+            sheet = workbook[comp_sheet_names[0]]
             if sheet.max_row < 2 or sheet[1][0].value != 'Name':
-                errors.append('Companys sheet: Missing or incorrect header (expected "Name")')
+                errors.append('Compagnies sheet: Missing or incorrect header (expected "Name")')
             else:
                 for row in sheet.iter_rows(min_row=2, values_only=True):
                     name = row[0]
@@ -707,70 +720,138 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                         Company.objects.get_or_create(name=name)
                         created_records['Companys'] += 1
                     else:
-                        errors.append('Only admins can import Companys')
+                        errors.append('Only admins can import Compagnies')
                         break
 
-        # Import Companies
-        if 'Companies' in workbook.sheetnames:
-            sheet = workbook['Companies']
+        # Import Brokers / Courtiers (support old 'Companies' name and new 'Courtiers')
+        broker_sheet_names = [n for n in ('Courtiers', 'Companies') if n in workbook.sheetnames]
+        if broker_sheet_names:
+            sheet = workbook[broker_sheet_names[0]]
             if sheet.max_row < 2 or tuple(cell.value for cell in sheet[1][:3]) != (
-            'Name', 'Company Name', 'Contact Email'):
+                    'Name', 'Company Name', 'Contact Email'):
                 errors.append(
-                    'Companies sheet: Missing or incorrect headers (expected "Name", "Company Name", "Contact Email")')
+                    'Courtiers sheet: Missing or incorrect headers (expected "Name", "Company Name", "Contact Email")')
             else:
                 for row in sheet.iter_rows(min_row=2, values_only=True):
-                    name, Company_name, contact_email = row[:3]
-                    if not (name and Company_name):
+                    name, company_name, contact_email = row[:3]
+                    if not (name and company_name):
                         continue
                     if request.user.userprofile.role == 'ADMIN':
                         try:
-                            Company = Company.objects.get(name=Company_name)
-                            Broker.objects.get_or_create(
+                            company_obj = Company.objects.get(name=company_name)
+                            broker_obj, created = Broker.objects.get_or_create(
                                 name=name,
-                                defaults={'Company': Company, 'contact_email': contact_email}
+                                defaults={'contact_email': contact_email}
                             )
+                            # link broker to company (ManyToMany)
+                            try:
+                                broker_obj.Companys.add(company_obj)
+                            except Exception:
+                                pass
                             created_records['companies'] += 1
                         except Company.DoesNotExist:
-                            errors.append(f'Broker {name}: Company {Company_name} not found')
+                            errors.append(f'Broker {name}: Company {company_name} not found')
                     else:
-                        errors.append('Only admins can import companies')
+                        errors.append('Only admins can import brokers')
                         break
 
         # Import Invoices
         if 'Invoices' in workbook.sheetnames:
             sheet = workbook['Invoices']
-            expected_headers = ['Provider Name', 'Company Name', 'Broker Name', 'Invoice Number',
-                                'Invoice Month (YYYY-MM)', 'Billed Amount', 'Paid Amount', 'Status']
-            if sheet.max_row < 2 or tuple(cell.value for cell in sheet[1][:8]) != tuple(expected_headers):
-                errors.append(
-                    'Invoices sheet: Missing or incorrect headers (expected: ' + ', '.join(expected_headers) + ')')
+            # Support both the old minimal template and the new expanded template by detecting headers
+            header_row = [cell.value for cell in sheet[1]]
+            # Define possible header names and indexes
+            hdr_map = {h: i for i, h in enumerate(header_row) if h}
+
+            # helper to get cell by header name (case-insensitive startswith)
+            def idx_of(prefix_list):
+                for pref in prefix_list:
+                    for i, h in enumerate(header_row):
+                        if not h:
+                            continue
+                        if str(h).strip().lower().startswith(pref.lower()):
+                            return i
+                return None
+
+            # Determine indexes
+            i_provider = idx_of(['Provider Name', 'Provider'])
+            i_company = idx_of(['Company Name', 'Company'])
+            i_broker = idx_of(['Broker Name', 'Broker'])
+            i_invoice_number = idx_of(['Invoice Number', 'N° facture', 'Invoice'])
+            i_deposit_date = idx_of(['Deposit Date', 'Deposit', 'Date dépôt'])
+            i_invoice_month = idx_of(['Invoice Month', 'invoice_month', 'Mois facture'])
+            i_billed = idx_of(['Billed Amount', 'Billed', 'Montant facturé'])
+            i_paid_amounts = idx_of(['Paid Amounts', 'Paid Amount', 'Paid'])
+            i_paid_dates = idx_of(['Paid Dates', 'Paid Date', 'Date(s) paiements'])
+            i_rejected_amounts = idx_of(['Rejected Amounts', 'Rejected Amount', 'Montant rejeté'])
+            i_rejected_reasons = idx_of(['Rejected Reasons', 'Rejected Reason', 'Motif rejet'])
+            i_status = idx_of(['Status', 'Dernier statut'])
+
+            # Minimal required indexes
+            if i_provider is None or i_company is None or i_broker is None or i_invoice_number is None or i_invoice_month is None or i_billed is None:
+                errors.append('Invoices sheet: Missing required headers. Expected at least Provider Name, Company Name, Broker Name, Invoice Number, Invoice Month (YYYY-MM), Billed Amount')
             else:
                 for row in sheet.iter_rows(min_row=2, values_only=True):
-                    provider_name, Company_name, Broker_name, invoice_number, invoice_month, billed_amount, paid_amount, status = row[
-                                                                                                                                  :8]
-                    if not all(
-                            [provider_name, Company_name, Broker_name, invoice_number, invoice_month, billed_amount]):
+                    provider_name = row[i_provider] if i_provider is not None else None
+                    Company_name = row[i_company] if i_company is not None else None
+                    Broker_name = row[i_broker] if i_broker is not None else None
+                    invoice_number = row[i_invoice_number] if i_invoice_number is not None else None
+                    deposit_date = row[i_deposit_date] if i_deposit_date is not None else None
+                    invoice_month = row[i_invoice_month] if i_invoice_month is not None else None
+                    billed_amount = row[i_billed] if i_billed is not None else None
+                    paid_vals_raw = row[i_paid_amounts] if i_paid_amounts is not None else None
+                    paid_dates_raw = row[i_paid_dates] if i_paid_dates is not None else None
+                    rejected_vals_raw = row[i_rejected_amounts] if i_rejected_amounts is not None else None
+                    rejected_reasons_raw = row[i_rejected_reasons] if i_rejected_reasons is not None else None
+                    invoice_status = row[i_status] if i_status is not None else None
+
+                    if not all([provider_name, Company_name, Broker_name, invoice_number, invoice_month, billed_amount]):
                         continue
 
                     try:
                         # Validate invoice month
-                        invoice_month = datetime.strptime(invoice_month, '%Y-%m').date()
-                        # Validate status
-                        if status not in dict(Invoice.STATUS_CHOICES):
-                            errors.append(f'Invoice {invoice_number}: Invalid status {status}')
-                            continue
-                        # Validate amounts
-                        billed_amount = float(billed_amount)
-                        paid_amount = float(paid_amount) if paid_amount else 0.0
+                        invoice_month_date = None
+                        try:
+                            invoice_month_date = datetime.strptime(str(invoice_month), '%Y-%m').date()
+                        except Exception:
+                            # if deposit_date is present, try to extract year-month
+                            if deposit_date:
+                                try:
+                                    invoice_month_date = datetime.strptime(str(deposit_date)[:10], '%Y-%m-%d').date().replace(day=1)
+                                except Exception:
+                                    raise ValueError('Invalid invoice month or deposit date')
+                            else:
+                                raise ValueError('Invalid invoice month format')
 
-                        Company = Company.objects.get(name=Company_name)
-                        Broker = Broker.objects.get(name=Broker_name, Company=Company)
+                        # Parse billed amount
+                        billed_amount_f = float(billed_amount)
+
+                        # Parse paid amounts (comma separated) -> sum
+                        paid_amount_f = 0.0
+                        if paid_vals_raw:
+                            try:
+                                if isinstance(paid_vals_raw, str):
+                                    paid_list = [p.strip() for p in paid_vals_raw.split(',') if p.strip()]
+                                else:
+                                    paid_list = [str(paid_vals_raw)]
+                                paid_amount_f = sum([float(p.replace(' ', '')) for p in paid_list])
+                            except Exception:
+                                paid_amount_f = float(paid_list[0]) if paid_list else 0.0
+
+                        # Validate status against choices if present
+                        if invoice_status and invoice_status not in dict(Invoice.STATUS_CHOICES):
+                            errors.append(f'Invoice {invoice_number}: Invalid status {invoice_status}')
+                            continue
+
+                        # Resolve related objects without shadowing model class names
+                        company_obj = Company.objects.get(name=Company_name)
+                        broker_obj = Broker.objects.get(name=Broker_name, Companys__in=[company_obj]) if Broker.objects.filter(name=Broker_name, Companys__in=[company_obj]).exists() else None
 
                         if request.user.userprofile.role == 'ADMIN':
-                            provider = Provider.objects.get(name=provider_name)
+                            provider_obj = Provider.objects.get(name=provider_name)
                         else:
-                            provider = Provider.objects.get(user=request.user)
-                            if provider_name != provider.name:
+                            provider_obj = Provider.objects.get(user=request.user)
+                            if provider_name != provider_obj.name:
                                 errors.append(
                                     f'Invoice {invoice_number}: Provider name {provider_name} does not match authenticated user')
                                 continue
@@ -778,21 +859,36 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                         Invoice.objects.get_or_create(
                             invoice_number=invoice_number,
                             defaults={
-                                'provider': provider,
-                                'Company': Company,
-                                'Broker': Broker,
-                                'invoice_month': invoice_month,
-                                'billed_amount': billed_amount,
-                                'paid_amount': paid_amount,
-                                'status': status,
+                                'provider': provider_obj,
+                                'Company': company_obj,
+                                'Broker': broker_obj,
+                                'invoice_month': invoice_month_date,
+                                'billed_amount': billed_amount_f,
+                                'paid_amount': paid_amount_f,
+                                'status': invoice_status or 'UNPAID',
                             }
                         )
                         created_records['invoices'] += 1
                     except (Company.DoesNotExist, Broker.DoesNotExist, Provider.DoesNotExist, ValueError) as e:
                         errors.append(f'Invoice {invoice_number}: {str(e)}')
 
+        # If there are import errors, log them to the server console for diagnosis
         if errors:
+            try:
+                print('--- import_data DEBUG ---')
+                print('errors:', errors)
+                print('created_records:', created_records)
+                print('-------------------------')
+            except Exception:
+                pass
             return Response({'errors': errors, 'created': created_records}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            print('--- import_data SUCCESS ---')
+            print('created_records:', created_records)
+            print('----------------------------')
+        except Exception:
+            pass
         return Response({'message': 'Data imported successfully', 'created': created_records}, status=status.HTTP_200_OK)
 
 

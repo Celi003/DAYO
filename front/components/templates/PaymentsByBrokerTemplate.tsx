@@ -53,6 +53,8 @@ const styles: { [k: string]: React.CSSProperties } = {
   bigTable: { width: '100%', borderCollapse: 'collapse', marginTop: 8 },
   th: { background: '#2b6fb2', color: 'white', padding: 6, border: '1px solid #999', fontSize: 11 },
   td: { padding: 8, border: '1px solid #999', verticalAlign: 'top', height: 28 },
+  tdCenter: { padding: 8, border: '1px solid #999', verticalAlign: 'top', height: 28, textAlign: 'center' as const },
+  tdNumeric: { padding: 8, border: '1px solid #999', verticalAlign: 'top', height: 28, textAlign: 'right' as const, fontVariantNumeric: 'tabular-nums' as const, fontFamily: 'Arial, Helvetica, sans-serif' },
   observations: { marginTop: 18 },
 }
 
@@ -102,19 +104,19 @@ export const PaymentsByBrokerTemplate: React.FC<Props> = ({
                 </tr>
                 <tr>
                   <td style={{ padding: 4 }}>Montant total facturé</td>
-                  <td style={{ padding: 4 }}>{money(totals?.billed)}</td>
+                    <td style={{ padding: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums' as const, fontFamily: 'Arial, Helvetica, sans-serif' }}>{money(totals?.billed)}</td>
                 </tr>
                 <tr>
                   <td style={{ padding: 4 }}>Montant total payé</td>
-                  <td style={{ padding: 4 }}>{money(totals?.paid)}</td>
+                    <td style={{ padding: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums' as const, fontFamily: 'Arial, Helvetica, sans-serif' }}>{money(totals?.paid)}</td>
                 </tr>
                 <tr>
                   <td style={{ padding: 4 }}>Montant total rejeté</td>
-                  <td style={{ padding: 4 }}>{money(totals?.rejected)}</td>
+                    <td style={{ padding: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums' as const, fontFamily: 'Arial, Helvetica, sans-serif' }}>{money(totals?.rejected)}</td>
                 </tr>
                 <tr>
                   <td style={{ padding: 4 }}>Solde à percevoir</td>
-                  <td style={{ padding: 4 }}>{money(totals?.balance)}</td>
+                    <td style={{ padding: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums' as const, fontFamily: 'Arial, Helvetica, sans-serif' }}>{money(totals?.balance)}</td>
                 </tr>
               </tbody>
             </table>
@@ -125,17 +127,17 @@ export const PaymentsByBrokerTemplate: React.FC<Props> = ({
       <table style={styles.bigTable} className="template-table">
         <thead>
           <tr>
-            <th style={styles.th}>N° facture</th>
-            <th style={styles.th}>Date dépôt</th>
-            <th style={styles.th}>Mois facture</th>
-            <th style={styles.th}>Courtier</th>
-            <th style={styles.th}>Sous-compagnie</th>
-            <th style={styles.th}>Montant facturé</th>
-            <th style={styles.th}>Montant payé</th>
-            <th style={styles.th}>Montant rejeté</th>
-            <th style={styles.th}>Date(s) paiements</th>
-            <th style={styles.th}>Solde à percevoir</th>
-            <th style={styles.th}>Dernier statut</th>
+            <th style={{ ...styles.th, textAlign: 'center' }}>N° facture</th>
+            <th style={{ ...styles.th, textAlign: 'center' }}>Date dépôt</th>
+            <th style={{ ...styles.th, textAlign: 'center' }}>Mois facture</th>
+            <th style={{ ...styles.th, textAlign: 'center' }}>Courtier</th>
+            <th style={{ ...styles.th, textAlign: 'center' }}>Sous-compagnie</th>
+            <th style={{ ...styles.th, textAlign: 'right' }}>Montant facturé</th>
+            <th style={{ ...styles.th, textAlign: 'right' }}>Montant payé</th>
+            <th style={{ ...styles.th, textAlign: 'right' }}>Montant rejeté</th>
+            <th style={{ ...styles.th, textAlign: 'center' }}>Date(s) paiements</th>
+            <th style={{ ...styles.th, textAlign: 'right' }}>Solde à percevoir</th>
+            <th style={{ ...styles.th, textAlign: 'center' }}>Dernier statut</th>
             <th style={styles.th}>Motif rejet</th>
           </tr>
         </thead>
@@ -149,27 +151,27 @@ export const PaymentsByBrokerTemplate: React.FC<Props> = ({
                 <td style={styles.td}>{r.invoiceNumber}</td>
                 <td style={styles.td}>{r.depositDate}</td>
                 <td style={styles.td}>{r.invoiceMonth}</td>
-                <td style={styles.td}>{r.broker}</td>
-                <td style={styles.td}>{r.subCompany}</td>
-                <td style={styles.td}>{money(r.billedAmount)}</td>
-                <td style={styles.td}>
+                <td style={styles.tdCenter}>{r.broker}</td>
+                <td style={styles.tdCenter}>{r.subCompany}</td>
+                <td style={styles.tdNumeric}>{money(r.billedAmount)}</td>
+                <td style={styles.tdNumeric}>
                   {paid.length === 0 ? '' : paid.map((p, idx) => (
-                    <div key={idx}>{money(p.amount)}</div>
+                    <div key={idx} style={{ textAlign: 'right' }}>{money(p.amount)}</div>
                   ))}
                 </td>
-                <td style={styles.td}>
+                <td style={styles.tdNumeric}>
                   {rejected.length === 0 ? '' : rejected.map((p, idx) => (
-                    <div key={idx}>{money(p.amount)}</div>
+                    <div key={idx} style={{ textAlign: 'right' }}>{money(p.amount)}</div>
                   ))}
                 </td>
-                <td style={styles.td}>
+                <td style={styles.tdCenter}>
                   {paid.length === 0 ? '' : paid.map((p, idx) => (
                     <div key={idx}>{p.date || ''}</div>
                   ))}
                 </td>
-                <td style={styles.td}>{money(r.balance)}</td>
-                <td style={styles.td}>{r.lastStatus}</td>
-                <td style={styles.td}>{rejectReasons.join(', ')}</td>
+                <td style={styles.tdNumeric}>{money(r.balance)}</td>
+                <td style={styles.tdCenter}>{r.lastStatus}</td>
+                <td style={{ ...styles.td, textAlign: 'left' }}>{rejectReasons.join(', ')}</td>
               </tr>
             )
           })}

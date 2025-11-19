@@ -7,6 +7,7 @@ import {
   importInvoices,
   useApi,
 } from "../services/api";
+import { getInvoiceStatus } from "../utils/helpers";
 import saveAs from "file-saver";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -174,10 +175,18 @@ export default function useRegistrations(selectedYear: number) {
           const XLSX = (await import('xlsx')) as any;
 
           const buildSheetAOA = (list: any[], type: 'compagnie' | 'courtier') => {
+            // Filter the provided list according to the sheet type so Excel matches the PDF logic:
+            // - 'courtier' sheet contains invoices that have a Broker
+            // - 'compagnie' sheet contains invoices that do NOT have a Broker
+            const filteredList = (list || []).filter((inv: any) => {
+              const hasBroker = !!(inv.Broker || inv.broker)
+              return type === 'courtier' ? hasBroker : !hasBroker
+            })
+
             const aoa: any[][] = [];
             const title = type === 'compagnie' ? `État de facturation - Compagnies (${selectedYear})` : `État de facturation - Courtiers (${selectedYear})`;
             // Header metadata rows (match image)
-            aoa.push([`Prestataire :`, invoicesToExport[0]?.provider?.name || '']);
+            aoa.push([`Prestataire :`, filteredList[0]?.provider?.name || invoicesToExport[0]?.provider?.name || '']);
             aoa.push([`Type d'état :`, type === 'compagnie' ? 'État de facturation par compagnie' : 'État de facturation par courtier']);
             aoa.push([type === 'compagnie' ? 'Compagnie :' : 'Courtier :', filters.Broker || 'Toutes']);
             aoa.push([`Période :`, `${filters.dateMin || ''} - ${filters.dateMax || ''}`]);
@@ -186,9 +195,9 @@ export default function useRegistrations(selectedYear: number) {
 
             // Totals box
             const totalsForList: any = {
-              billed: list.reduce((s: number, inv: any) => s + Number(inv.billed_amount || 0), 0),
-              paid: list.reduce((s: number, inv: any) => s + (inv.payments || []).reduce((ss: number, p: any) => ss + Number(p.amount || 0), 0), 0),
-              rejected: list.reduce((s: number, inv: any) => s + (inv.rejections || []).reduce((ss: number, r: any) => ss + Number(r.rejected_amount ?? r.amount ?? 0), 0), 0),
+              billed: filteredList.reduce((s: number, inv: any) => s + Number(inv.billed_amount || 0), 0),
+              paid: filteredList.reduce((s: number, inv: any) => s + (inv.payments || []).reduce((ss: number, p: any) => ss + Number(p.amount || 0), 0), 0),
+              rejected: filteredList.reduce((s: number, inv: any) => s + (inv.rejections || []).reduce((ss: number, r: any) => ss + Number(r.rejected_amount ?? r.amount ?? 0), 0), 0),
             };
             totalsForList['balance'] = totalsForList.billed - totalsForList.paid - totalsForList.rejected;
             aoa.push(['Indicateur', 'Montant']);
@@ -207,7 +216,7 @@ export default function useRegistrations(selectedYear: number) {
             aoa.push(headersRow);
 
             // Rows
-            list.forEach((inv: any) => {
+            filteredList.forEach((inv: any) => {
               const paidValues = (inv.payments || []).map((p: any) => Number(p.amount || 0).toFixed(2)).join('\n');
               const paidDates = (inv.payments || []).map((p: any) => p.date || p.payment_date || '').join('\n');
               const rejectedValues = (inv.rejections || []).map((r: any) => Number(r.rejected_amount ?? r.amount ?? 0).toFixed(2)).join('\n');
@@ -215,6 +224,7 @@ export default function useRegistrations(selectedYear: number) {
               const paidNum = (inv.payments || []).reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
               const rejectedNum = (inv.rejections || []).reduce((s: number, r: any) => s + Number(r.rejected_amount ?? r.amount ?? 0), 0);
               const remaining = Number(inv.billed_amount || 0) - paidNum - rejectedNum;
+              const statusText = (getInvoiceStatus(inv) || { text: inv.status || '' }).text
               if (type === 'compagnie') {
                 aoa.push([
                   inv.invoice_number || '',
@@ -226,7 +236,7 @@ export default function useRegistrations(selectedYear: number) {
                   rejectedValues,
                   paidDates,
                   remaining.toFixed(2),
-                  inv.status || '',
+                  statusText || '',
                   rejectReasons,
                 ]);
               } else {
@@ -241,7 +251,7 @@ export default function useRegistrations(selectedYear: number) {
                   rejectedValues,
                   paidDates,
                   remaining.toFixed(2),
-                  inv.status || '',
+                  statusText || '',
                   rejectReasons,
                 ]);
               }
@@ -276,154 +286,26 @@ export default function useRegistrations(selectedYear: number) {
           console.error('Erreur export Excel (XLSX):', err);
         }
       } else if (format === "pdf") {
-        // Use server-side PDF (preferred) — Compagnie by default; if you need courtier use param
-        const params: Record<string, string | number> = {};
-        if (filters.Broker) params.Broker = filters.Broker;
-        if (filters.status) params.status = filters.status;
-        if (filters.dateMin) params.date_min = filters.dateMin;
-        if (filters.dateMax) params.date_max = filters.dateMax;
-        if (filters.amountMin) params.amount_min = Number(filters.amountMin);
-        if (filters.amountMax) params.amount_max = Number(filters.amountMax);
-        if (search) params.search = search;
+        // Use client-side preview for PDF export so the same templates and URL filters are used.
         try {
           setServerPdfLoading(true);
-          // If an entity filter is present (Broker used as entity filter), delegate to server
-          const entityFilter = !!filters.Broker && String(filters.Broker).trim() !== "";
-          if (entityFilter) {
-            params.target = sheet;
-            const blob = await (await import('../services/api')).exportInvoices('pdf', params);
-            saveAs(blob, `enregistrements_${selectedYear}.pdf`);
-          } else {
-            // No entity filter -> generate a two-page PDF client-side: companies then brokers
-            const doc = new jsPDF({ orientation: "landscape" });
-
-            const makeRowLines = (inv: any) => {
-              const paidList = (inv.payments || []).map((p: any) => Number(p.amount || p));
-              const paidAmounts = paidList.map((n: number) => n.toFixed(2)).join('\n');
-              const rejectedList = (inv.rejections || []).map((r: any) => Number(r.rejected_amount ?? r.amount ?? r));
-              const rejectedAmounts = rejectedList.map((n: number) => n.toFixed(2)).join('\n');
-              const paidDates = (inv.payments || []).map((p: any) => p.date || p.payment_date || '').join('\n');
-              const rejectReasons = (inv.rejections || []).map((r: any) => r.reason || r.rejection_reason || '').filter(Boolean).join(', ');
-              const paid = paidAmounts;
-              const rejected = rejectedAmounts;
-              return { paid, rejected, paidDates, rejectReasons };
-            };
-
-            // Common headers that approximate the templates
-            const headersCompany = [
-              'N° facture',
-              'Date dépôt',
-              'Mois facture',
-              'Compagnie',
-              'Montant facturé',
-              'Montant payé',
-              'Montant rejeté',
-              'Date(s) paiements',
-              'Solde à percevoir',
-              'Dernier statut',
-              'Motif rejet',
-            ];
-
-            const headersBroker = [
-              'N° facture',
-              'Date dépôt',
-              'Mois facture',
-              'Courtier',
-              'Sous-compagnie',
-              'Montant facturé',
-              'Montant payé',
-              'Montant rejeté',
-              'Date(s) paiements',
-              'Solde à percevoir',
-              'Dernier statut',
-              'Motif rejet',
-            ];
-
-            const rowsCompany: any[] = invoicesToExport.map((inv: any) => {
-              const { paid, rejected, paidDates, rejectReasons } = makeRowLines(inv);
-              const paidNum = (inv.payments || []).reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
-              const rejectedNum = (inv.rejections || []).reduce((s: number, r: any) => s + Number(r.rejected_amount ?? r.amount ?? 0), 0);
-              const remaining = Number(inv.billed_amount || 0) - paidNum - rejectedNum;
-              return [
-                inv.invoice_number || '',
-                inv.deposit_date || '',
-                inv.invoice_month || '',
-                inv.Company?.name || (inv.company?.name || ''),
-                Number(inv.billed_amount || 0).toFixed(2),
-                paid,
-                rejected,
-                paidDates,
-                remaining.toFixed(2),
-                inv.status || '',
-                rejectReasons,
-              ];
-            });
-
-            const rowsBroker: any[] = invoicesToExport.map((inv: any) => {
-              const { paid, rejected, paidDates, rejectReasons } = makeRowLines(inv);
-              const paidNum = (inv.payments || []).reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
-              const rejectedNum = (inv.rejections || []).reduce((s: number, r: any) => s + Number(r.rejected_amount ?? r.amount ?? 0), 0);
-              const remaining = Number(inv.billed_amount || 0) - paidNum - rejectedNum;
-              return [
-                inv.invoice_number || '',
-                inv.deposit_date || '',
-                inv.invoice_month || '',
-                inv.Broker?.name || (inv.broker?.name || ''),
-                inv.Company?.name || (inv.company?.name || ''),
-                Number(inv.billed_amount || 0).toFixed(2),
-                paid,
-                rejected,
-                paidDates,
-                remaining.toFixed(2),
-                inv.status || '',
-                rejectReasons,
-              ];
-            });
-
-            // Page 1: Companies
-            doc.setFontSize(14);
-            doc.text(`État de facturation - Compagnies (${selectedYear})`, 14, 16);
-            autoTable(doc, {
-              head: [headersCompany],
-              body: rowsCompany,
-              startY: 22,
-              styles: { fontSize: 8, cellPadding: 3 },
-              headStyles: { fillColor: [59, 130, 246] },
-              columnStyles: { 5: { cellWidth: 'wrap' } },
-            });
-
-            // Page 2: Brokers
-            doc.addPage();
-            doc.setFontSize(14);
-            doc.text(`État de facturation - Courtiers (${selectedYear})`, 14, 16);
-            autoTable(doc, {
-              head: [headersBroker],
-              body: rowsBroker,
-              startY: 22,
-              styles: { fontSize: 8, cellPadding: 3 },
-              headStyles: { fillColor: [59, 130, 246] },
-            });
-
-            doc.save(`enregistrements_${selectedYear}.pdf`);
+          try {
+            const qs = new URLSearchParams();
+            qs.set('auto', '1');
+            if (filters.Broker) qs.set('Broker', String(filters.Broker));
+            if (filters.status) qs.set('status', String(filters.status));
+            if (filters.dateMin) qs.set('dateMin', String(filters.dateMin));
+            if (filters.dateMax) qs.set('dateMax', String(filters.dateMax));
+            if (filters.amountMin) qs.set('amountMin', String(filters.amountMin));
+            if (filters.amountMax) qs.set('amountMax', String(filters.amountMax));
+            if (search) qs.set('search', String(search));
+            const url = `/export-preview?${qs.toString()}`;
+            window.open(url, '_blank');
+          } catch (e) {
+            console.error('Unable to open export preview page for HTML PDF export:', e);
           }
         } catch (err) {
-          console.error('Erreur export PDF (server or client):', err);
-          // fallback single-table pdf using existing rows
-          try {
-            const doc = new jsPDF({ orientation: 'landscape' });
-            doc.setFontSize(14);
-            doc.text(`Export Enregistrements - ${selectedYear}`, 14, 16);
-            autoTable(doc, {
-              head: [headers],
-              body: rows,
-              startY: 22,
-              styles: { fontSize: 8 },
-              headStyles: { fillColor: [59, 130, 246] },
-            });
-            doc.save(`enregistrements_${selectedYear}.pdf`);
-          } catch (e2) {
-            console.error('Fallback PDF generation failed:', e2);
-          }
+          console.error('Erreur export PDF (client):', err);
         } finally {
           setServerPdfLoading(false);
         }
