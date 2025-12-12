@@ -44,7 +44,7 @@ type Props = {
 
 const styles: { [k: string]: React.CSSProperties } = {
   container: { fontFamily: 'Arial, Helvetica, sans-serif', padding: 18, fontSize: 12 },
-  headerRow: { display: 'flex', gap: 24, marginBottom: 12 },
+  headerRow: { display: 'flex', gap: 24, marginBottom: 12, alignItems: 'flex-start' },
   headerBlock: { minWidth: 220 },
   smallLabel: { fontWeight: 600, marginBottom: 4 },
   totalsBox: { border: '1px solid #999', width: 260, padding: 6, marginBottom: 12 },
@@ -55,6 +55,8 @@ const styles: { [k: string]: React.CSSProperties } = {
   tdCenter: { padding: 8, border: '1px solid #999', verticalAlign: 'top', height: 28, textAlign: 'center' as const },
   tdNumeric: { padding: 8, border: '1px solid #999', verticalAlign: 'top', height: 28, textAlign: 'right' as const, fontVariantNumeric: 'tabular-nums' as const, fontFamily: 'Arial, Helvetica, sans-serif' },
   observations: { marginTop: 18 },
+  logoBox: { marginLeft: 'auto', display: 'flex', alignItems: 'center' },
+  logoImg: { height: 96, objectFit: 'contain' as const },
 }
 
 function money(v?: number) {
@@ -120,6 +122,10 @@ export const PaymentsByCompanyTemplate: React.FC<Props> = ({
               </tbody>
             </table>
           </div>
+        </div>
+
+        <div style={styles.logoBox}>
+          <img src="/Images/logo%20export.png" alt="TakaCheck" style={styles.logoImg} />
         </div>
       </div>
 

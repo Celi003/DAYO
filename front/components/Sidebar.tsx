@@ -70,10 +70,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setColla
       onMouseEnter={() => setCollapsed(false)}
       onMouseLeave={() => setCollapsed(true)}
     >
-      <div className="h-20 flex items-center justify-center border-b border-slate-700">
-         <div className="bg-white text-slate-800 font-bold text-2xl w-12 h-12 flex items-center justify-center rounded-lg">
-          {user.username.charAt(0).toUpperCase()}
-        </div>
+      <div className="h-20 flex items-center justify-center border-b border-slate-700 px-3">
+        <img src="/Images/Logo.png" alt="TakaCheck" className={`${isCollapsed ? 'h-12' : 'h-14'} object-contain`} />
       </div>
       <nav className="flex-1 px-4 py-6">
         <ul>

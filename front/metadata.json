@@ -1,5 +1,5 @@
 {
-  "name": "Copy of Système de Suivi des Paiemencecec",
+  "name": "TakaCheck",
   "description": "Une application web pour permettre à un prestataire de santé de suivre facilement le dépôt des factures, les règlements, les rejets ainsi que le calcul des restes à régler avec les partenaires (assureurs et Compagnies).",
   "requestFramePermissions": [],
   "prompt": ""

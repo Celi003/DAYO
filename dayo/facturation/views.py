@@ -43,12 +43,20 @@ class LoginView(APIView):
                 }
             )
             token, _ = Token.objects.get_or_create(user=user)
+            # Get provider name if exists
+            provider_name = None
+            try:
+                provider_name = user.provider.name
+            except:
+                pass
+            
             return Response({
                 'token': token.key,
                 'role': profile.role,
                 'isActive': profile.is_active,
                 'subscriptionEndDate': profile.subscription_expiry.isoformat() if profile.subscription_expiry else None,
                 'username': user.username,
+                'name': provider_name,
                 'id': str(profile.id),
                 'user_id': user.id,
             })
@@ -354,6 +362,16 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         if user.userprofile.role == 'ADMIN':
             return queryset
         return queryset.filter(provider__user=user)
+
+    def create(self, request, *args, **kwargs):
+        print(f"DEBUG: Invoice creation data: {request.data}")
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            print(f"DEBUG: Invoice validation errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -968,7 +986,21 @@ class NotificationViewSet(viewsets.ModelViewSet):
         
         return Response({
             'message': f'{count} notification(s) marquée(s) comme lue(s)',
-            'updated_count': count
+            'count': count
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def unread_count(self, request):
+        """Obtenir le nombre de notifications non lues de l'utilisateur connecté"""
+        user = request.user
+        count = Notification.objects.filter(user=user, is_read=False).count()
+        
+        return Response({
+            'count': count
+        }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'count': count
         }, status=status.HTTP_200_OK)
 
 
@@ -1426,3 +1458,302 @@ def export_fallback(request):
     drf_request = Request(request)
     view = ExportView()
     return view.get(drf_request)
+
+
+class DashboardView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrActiveProvider]
+
+    def get(self, request, year):
+        """
+        Retourne les statistiques du dashboard pour une année donnée
+        """
+        try:
+            year = int(year)
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid year'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Filtrer les factures par année
+        invoices = Invoice.objects.filter(
+            deposit_date__year=year
+        )
+
+        # Si l'utilisateur est un prestataire, filtrer par son ID
+        if hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'PROVIDER':
+            try:
+                provider = Provider.objects.get(user=request.user)
+                invoices = invoices.filter(provider=provider)
+                print(f"DEBUG Dashboard: Provider {provider.id}, Year {year}, Invoices count: {invoices.count()}")
+            except Provider.DoesNotExist:
+                print(f"DEBUG Dashboard: Provider not found for user {request.user.username}")
+                pass
+        else:
+            print(f"DEBUG Dashboard: Admin user, Year {year}, Invoices count: {invoices.count()}")
+
+        # Calculer les statistiques globales
+        total_invoices = invoices.count()
+        total_revenue = invoices.aggregate(Sum('billed_amount'))['billed_amount__sum'] or 0
+        
+        print(f"DEBUG Dashboard: Total invoices: {total_invoices}, Total revenue: {total_revenue}")
+        
+        # Calculer le total des paiements
+        total_payments = Payment.objects.filter(
+            invoice__in=invoices
+        ).aggregate(Sum('amount'))['amount__sum'] or 0
+
+        # Calculer le total des rejets
+        total_rejections = Rejection.objects.filter(
+            invoice__in=invoices
+        ).aggregate(Sum('rejected_amount'))['rejected_amount__sum'] or 0
+
+        # Calculer les factures par statut
+        status_counts = {
+            'pending': invoices.filter(status='PENDING').count(),
+            'partially_paid': invoices.filter(status='PARTIALLY_PAID').count(),
+            'paid': invoices.filter(status='PAID').count(),
+            'rejected': invoices.filter(status='REJECTED').count(),
+        }
+
+        # Calculer les revenus mensuels
+        monthly_revenue = []
+        for month in range(1, 13):
+            month_invoices = invoices.filter(deposit_date__month=month)
+            month_total = month_invoices.aggregate(Sum('billed_amount'))['billed_amount__sum'] or 0
+            month_payments = Payment.objects.filter(
+                invoice__in=month_invoices
+            ).aggregate(Sum('amount'))['amount__sum'] or 0
+            
+            monthly_revenue.append({
+                'month': month,
+                'revenue': float(month_total),
+                'paid': float(month_payments)
+            })
+
+        # Statistiques par entité (compagnies et courtiers)
+        companies_stats = []
+        brokers_stats = []
+
+        # Stats par compagnie
+        companies = Company.objects.all()
+        for company in companies:
+            company_invoices = invoices.filter(Company=company)
+            if company_invoices.exists():
+                company_total = company_invoices.aggregate(Sum('billed_amount'))['billed_amount__sum'] or 0
+                companies_stats.append({
+                    'id': company.id,
+                    'name': company.name,
+                    'total': float(company_total),
+                    'count': company_invoices.count()
+                })
+
+        # Stats par courtier
+        brokers = Broker.objects.all()
+        for broker in brokers:
+            broker_invoices = invoices.filter(Broker=broker)
+            if broker_invoices.exists():
+                broker_total = broker_invoices.aggregate(Sum('billed_amount'))['billed_amount__sum'] or 0
+                brokers_stats.append({
+                    'id': broker.id,
+                    'name': broker.name,
+                    'total': float(broker_total),
+                    'count': broker_invoices.count()
+                })
+
+        return Response({
+            'year': year,
+            'totalInvoices': total_invoices,
+            'totalRevenue': float(total_revenue),
+            'totalPayments': float(total_payments),
+            'totalRejections': float(total_rejections),
+            'statusCounts': status_counts,
+            'monthlyRevenue': monthly_revenue,
+            'companiesStats': companies_stats,
+            'brokersStats': brokers_stats
+        })
+
+
+class InvoicesByYearView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrActiveProvider]
+
+    def get(self, request, year):
+        """
+        Retourne la liste des factures pour une année donnée
+        """
+        try:
+            year = int(year)
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid year'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Filtrer les factures par année
+        invoices = Invoice.objects.filter(
+            deposit_date__year=year
+        ).select_related('provider', 'Broker', 'Company').prefetch_related('payments', 'rejections')
+
+        # Si l'utilisateur est un prestataire, filtrer par son ID
+        if hasattr(request.user, 'userprofile') and request.user.userprofile.role == 'PROVIDER':
+            try:
+                provider = Provider.objects.get(user=request.user)
+                invoices = invoices.filter(provider=provider)
+            except Provider.DoesNotExist:
+                pass
+
+        # Sérialiser les factures
+        serializer = InvoiceSerializer(invoices, many=True)
+        return Response(serializer.data)
+
+
+class InvoicePaymentsView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrActiveProvider]
+
+    def post(self, request, invoice_id):
+        """
+        Ajouter un paiement à une facture
+        """
+        try:
+            invoice = Invoice.objects.get(id=invoice_id)
+        except Invoice.DoesNotExist:
+            return Response({'error': 'Invoice not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Ajouter l'invoice_id aux données pour la validation
+        data = dict(request.data)
+        data['invoice'] = invoice_id
+        
+        print(f"DEBUG: Payment data received: {data}")
+        
+        serializer = PaymentSerializer(data=data)
+        if serializer.is_valid():
+            amount = serializer.validated_data['amount']
+            # Validation: le paiement ne doit pas dépasser le reste à régler
+            try:
+                remaining_before = invoice.remaining_amount()
+            except Exception:
+                remaining_before = invoice.billed_amount - invoice.paid_amount - invoice.rejected_amount()
+            
+            if amount > remaining_before:
+                return Response({'error': 'Le paiement dépasse le montant restant de la facture.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            payment = serializer.save()
+            invoice.paid_amount += amount
+            print(f"DEBUG: Adding payment of {amount}, new paid_amount: {invoice.paid_amount}")
+            invoice.save()
+            
+            # Recalculer le statut après la sauvegarde
+            remaining = invoice.remaining_amount()
+            print(f"DEBUG: Remaining amount: {remaining}, Billed: {invoice.billed_amount}, Paid: {invoice.paid_amount}, Rejected: {invoice.rejected_amount()}")
+            invoice.status = 'PAID' if remaining <= 0 else 'PARTIAL'
+            invoice.save()
+            
+            # Notification interne au provider
+            Notification.objects.create(
+                user=invoice.provider.user,
+                notif_type='PAYMENT_ALERT',
+                message=f"Un paiement de {payment.amount} FCFA a été enregistré pour la facture {invoice.invoice_number}.",
+                invoice=invoice,
+                payment=payment
+            )
+            
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        print(f"Payment validation errors: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class InvoicePaymentDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrActiveProvider]
+
+    def delete(self, request, invoice_id, payment_id):
+        """
+        Supprimer un paiement
+        """
+        try:
+            payment = Payment.objects.get(id=payment_id, invoice_id=invoice_id)
+        except Payment.DoesNotExist:
+            return Response({'error': 'Payment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        invoice = payment.invoice
+        invoice.paid_amount -= payment.amount
+        invoice.save()
+        
+        # Recalculer le statut après la sauvegarde
+        if invoice.remaining_amount() >= invoice.billed_amount:
+            invoice.status = 'PENDING'
+        elif invoice.remaining_amount() > 0:
+            invoice.status = 'PARTIAL'
+        else:
+            invoice.status = 'PAID'
+        
+        invoice.save()
+        payment.delete()
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class InvoiceRejectionsView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrActiveProvider]
+
+    def post(self, request, invoice_id):
+        """
+        Ajouter un rejet à une facture
+        """
+        try:
+            invoice = Invoice.objects.get(id=invoice_id)
+        except Invoice.DoesNotExist:
+            return Response({'error': 'Invoice not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Ajouter l'invoice_id aux données pour la validation
+        data = request.data.copy()
+        data['invoice'] = invoice_id
+        
+        serializer = RejectionSerializer(data=data)
+        if serializer.is_valid():
+            amount = serializer.validated_data['rejected_amount']
+            # Validation: le rejet ne doit pas dépasser le montant restant après paiements
+            try:
+                remaining_before = invoice.remaining_amount()
+            except Exception:
+                remaining_before = invoice.billed_amount - invoice.paid_amount - invoice.rejected_amount()
+            
+            if amount > remaining_before:
+                return Response({'error': 'Le montant du rejet dépasse le solde restant de la facture.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            rejection = serializer.save()
+            # Le rejected_amount est calculé dynamiquement, pas besoin de le stocker
+            # Juste recalculer le statut
+            invoice.status = 'REJECTED' if invoice.remaining_amount() <= 0 else 'PARTIAL'
+            invoice.save()
+            
+            # Notification interne au provider
+            Notification.objects.create(
+                user=invoice.provider.user,
+                notif_type='WARNING',
+                message=f"Un rejet de {rejection.rejected_amount} FCFA a été enregistré pour la facture {invoice.invoice_number}. Motif : {rejection.rejection_reason}",
+                invoice=invoice
+            )
+            
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        print(f"Rejection validation errors: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class InvoiceRejectionDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrActiveProvider]
+
+    def delete(self, request, invoice_id, rejection_id):
+        """
+        Supprimer un rejet
+        """
+        try:
+            rejection = Rejection.objects.get(id=rejection_id, invoice_id=invoice_id)
+        except Rejection.DoesNotExist:
+            return Response({'error': 'Rejection not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        invoice = rejection.invoice
+        
+        # Recalculer le statut
+        if invoice.remaining_amount() + rejection.rejected_amount >= invoice.billed_amount:
+            invoice.status = 'PENDING'
+        elif invoice.remaining_amount() + rejection.rejected_amount > 0:
+            invoice.status = 'PARTIAL'
+        
+        invoice.save()
+        rejection.delete()
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)

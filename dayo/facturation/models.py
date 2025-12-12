@@ -106,7 +106,7 @@ class Payment(models.Model):
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='payments')
     payment_date = models.DateTimeField()
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    payment_method = models.CharField(max_length=100)
+    payment_method = models.CharField(max_length=100, blank=True, default='Virement')
 
     def __str__(self):
         return f"Payment {self.id} for {self.invoice.invoice_number}"

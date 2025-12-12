@@ -50,11 +50,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, onGoToSignup }) => {
     <div className="flex items-center justify-center min-h-screen bg-slate-100">
       <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-lg shadow-lg">
         <div className="text-center">
-            <div className="mx-auto bg-slate-800 text-white font-bold text-4xl w-20 h-20 flex items-center justify-center rounded-2xl mb-6">
-                D
-            </div>
+            <img
+              src="/Images/Logo.png"
+              alt="TakaCheck logo"
+              className="mx-auto h-24 md:h-28 lg:h-32 mb-6 object-contain"
+            />
           <h1 className="text-3xl font-bold text-slate-800">
-            Système de Suivi des Paiements
+            TakaCheck
           </h1>
           <p className="mt-2 text-slate-600">Veuillez vous connecter à votre compte</p>
         </div>
