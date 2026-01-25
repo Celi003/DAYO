@@ -1,7 +1,13 @@
 
-import { Invoice, Payment, Rejection, User } from '../types';
 
-const API_BASE = 'http://localhost:8000'; // À adapter selon le déploiement
+const API_BASE = 'http://127.0.0.1:8000'; // À adapter selon le déploiement
+
+const normalizeRole = (role?: string) => {
+  if (!role) return undefined as unknown as string;
+  const r = role.toLowerCase();
+  if (r === 'sub_admin') return 'subadmin';
+  return r;
+};
 
 let authToken: string | null = null;
 // Toujours charger le token depuis sessionStorage au démarrage
@@ -46,14 +52,16 @@ export const login = async (username: string, password: string) => {
   setAuthToken(data.token);
   return {
     ...data,
-    role: data.role ? data.role.toLowerCase() : undefined
+    // ensure we expose the real Django user id immediately after login
+    id: data.user_id || data.id,
+    role: normalizeRole(data.role)
   };
 };
 
 export const registerUser = async (username: string, password: string, _name?: string, email?: string) => {
   const res = await fetch(`${API_BASE}/register/`, {
     method: 'POST',
-    headers: getHeaders(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password, email })
   });
   if (!res.ok) {
@@ -68,16 +76,22 @@ export const logout = () => {
 };
 
 export const getCurrentUser = async () => {
-  if (!authToken && !sessionStorage.getItem('authToken')) return null;
-  const res = await fetch(`${API_BASE}/users/`, { headers: getHeaders() });
-  if (!res.ok) return null;
-  if (!isJsonResponse(res)) return null;
-  const users = await res.json();
-  if (!users[0]) return null;
+  if (!authToken && !sessionStorage.getItem("authToken")) return null;
+
+  const res = await fetch(`${API_BASE}/users/me/`, {
+    headers: getHeaders(),
+  });
+
+  if (!res.ok || !isJsonResponse(res)) return null;
+
+  const data = await res.json();
+
+  console.log('Current user data:', data);
   return {
-    ...users[0],
-    role: users[0].role ? users[0].role.toLowerCase() : undefined,
-    is_active: users[0].is_active // Fix: keep the original property name
+    ...data,
+    id: data.user_id || data.id,
+    role: normalizeRole(data.role),
+    isActive: data.isActive !== undefined ? data.isActive : data.is_active,
   };
 };
 
@@ -96,8 +110,8 @@ export const getUsers = async () => {
   const users = await res.json();
   return users.map((u: any) => ({
     ...u,
-    role: u.role ? u.role.toLowerCase() : undefined,
-    is_active: u.is_active // Fix: keep the original property name
+    role: normalizeRole(u.role),
+    isActive: u.is_active // mapping
   }));
 };
 
@@ -111,7 +125,7 @@ export const updateUser = async (userId: string, data: any) => {
   return await res.json();
 };
 
-// PARTNERS (Providers, Brokers, Companies)
+// PARTNERS (Providers, Companys, Companies)
 export const getProviders = async () => {
   const res = await fetch(`${API_BASE}/providers/`, { headers: getHeaders() });
   if (!res.ok) {
@@ -126,15 +140,17 @@ export const getProviders = async () => {
   return await res.json();
 };
 
-export const getBrokers = async () => {
-  const res = await fetch(`${API_BASE}/brokers/`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Erreur lors de la récupération des courtiers');
+
+
+export const getCompanys = async () => {
+  const res = await fetch(`${API_BASE}/Companys/`, { headers: getHeaders() });
+  if (!res.ok) throw new Error('Erreur lors de la récupération des Compagnies');
   return await res.json();
 };
 
 export const getCompanies = async () => {
   const res = await fetch(`${API_BASE}/companies/`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Erreur lors de la récupération des compagnies');
+  if (!res.ok) throw new Error('Erreur lors de la récupération des Courtiers');
   return await res.json();
 };
 
@@ -153,11 +169,14 @@ export const getInvoices = async () => {
   const data = await res.json();
   return data.map((inv: any) => ({
     ...inv,
+    // Normalize backend fields to UI expectations
+    Broker: inv.Broker || inv.broker || null,
+    Company: inv.Company || inv.company || null,
     depositDate: inv.deposit_date,
     totalAmount: Number(inv.billed_amount),
     providerId: inv.provider?.id || inv.provider,
-    companyId: inv.company?.id || inv.company,
-    brokerId: inv.broker ? (inv.broker.id || inv.broker) : null,
+    brokerId: inv.broker?.id || inv.broker,
+    companyId: inv.company ? (inv.company.id || inv.company) : null,
     payments: (inv.payments || []).map((p: any) => ({
       ...p,
       date: p.payment_date,
@@ -178,15 +197,21 @@ export const addInvoice = async (invoiceData: any) => {
     headers: getHeaders(),
     body: JSON.stringify(invoiceData)
   });
-  if (!res.ok) throw new Error('Erreur lors de la création de la facture');
+  if (!res.ok) {
+    console.log(await res.text());
+    throw new Error('Erreur lors de la création de la facture');
+  }
   const inv = await res.json();
   return {
     ...inv,
+    // Normalize backend fields to UI expectations
+    Broker: inv.Broker || inv.broker || null,
+    Company: inv.Company || inv.company || null,
     depositDate: inv.deposit_date,
     totalAmount: inv.billed_amount,
     providerId: inv.provider,
-    companyId: inv.company,
     brokerId: inv.broker,
+    companyId: inv.company,
     payments: (inv.payments || []).map((p: any) => ({
       ...p,
       date: p.payment_date,
@@ -214,11 +239,14 @@ export const addPayment = async (invoiceId: string, paymentData: any) => {
   if (inv && inv.id && (inv.payments || inv.rejections)) {
     return {
       ...inv,
+      // Normalize backend fields to UI expectations
+      Broker: inv.Broker || inv.broker || null,
+      Company: inv.Company || inv.company || null,
       depositDate: inv.deposit_date,
       totalAmount: Number(inv.billed_amount),
       providerId: inv.provider?.id || inv.provider,
-      companyId: inv.company?.id || inv.company,
-      brokerId: inv.broker ? (inv.broker.id || inv.broker) : null,
+      brokerId: inv.broker?.id || inv.broker,
+      companyId: inv.company ? (inv.company.id || inv.company) : null,
       payments: (inv.payments || []).map((p: any) => ({
         ...p,
         date: p.payment_date,
@@ -247,11 +275,14 @@ export const addRejection = async (invoiceId: string, rejectionData: any) => {
   if (inv && inv.id && (inv.payments || inv.rejections)) {
     return {
       ...inv,
+      // Normalize backend fields to UI expectations
+      Broker: inv.Broker || inv.broker || null,
+      Company: inv.Company || inv.company || null,
       depositDate: inv.deposit_date,
       totalAmount: Number(inv.billed_amount),
       providerId: inv.provider?.id || inv.provider,
-      companyId: inv.company?.id || inv.company,
-      brokerId: inv.broker ? (inv.broker.id || inv.broker) : null,
+      brokerId: inv.broker?.id || inv.broker,
+      companyId: inv.company ? (inv.company.id || inv.company) : null,
       payments: (inv.payments || []).map((p: any) => ({
         ...p,
         date: p.payment_date,
@@ -279,10 +310,30 @@ export const getInvoiceStatistics = async (params: Record<string, string | numbe
 // EXPORT
 export const exportInvoices = async (format: 'excel' | 'pdf', params: Record<string, string | number> = {}) => {
   const query = new URLSearchParams({ ...params, format }).toString();
-  const res = await fetch(`${API_BASE}/invoices/export/?${query}`, { headers: getHeaders(false) });
+  const headers = getHeaders(false);
+  // Prevent the browser's default Accept header from triggering content-negotiation issues
+  // that can cause a 404 in some server setups. Use a permissive Accept.
+  headers['Accept'] = '*/*';
+  const res = await fetch(`${API_BASE}/export/?${query}`, { headers });
   if (!res.ok) throw new Error('Erreur lors de l\'export');
   const blob = await res.blob();
   return blob;
+};
+
+// Export enregistrements via le template serveur
+// Deprecated: previously used template-based XLSX endpoint. Use `exportInvoices('excel', params)` instead.
+export const exportRegistrationsTemplate = async (params: Record<string, string | number> = {}) => {
+  return exportInvoices('excel', params);
+};
+
+// Export registrations as PDF via server-side rendering
+export const exportRegistrationsPdf = async (
+  sheet: 'compagnie' | 'courtier',
+  params: Record<string, string | number> = {}
+) => {
+  // Use unified export endpoint with format=pdf and target param
+  const merged = { ...params, target: sheet } as Record<string, string | number>;
+  return exportInvoices('pdf', merged);
 };
 
 // IMPORT
@@ -319,6 +370,20 @@ export const generateReclamationLetter = async (invoiceId: string) => {
   return await res.json();
 };
 
+// DELETE INVOICE
+export const deleteInvoice = async (invoiceId: string) => {
+  const res = await fetch(`${API_BASE}/invoices/${invoiceId}/`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la suppression de la facture';
+    throw new Error(errorMessage);
+  }
+  return { success: true };
+};
+
 // CRUD PROVIDERS
 export const createProvider = async (data: any) => {
   const res = await fetch(`${API_BASE}/providers/`, {
@@ -351,40 +416,40 @@ export const deleteProvider = async (id: string) => {
   if (!res.ok) throw new Error('Erreur lors de la suppression du prestataire');
   return true;
 };
-// CRUD BROKERS
-export const createBroker = async (data: any) => {
-  const res = await fetch(`${API_BASE}/brokers/`, {
+// CRUD CompanyS
+export const createCompany = async (data: any) => {
+  const res = await fetch(`${API_BASE}/Companys/`, {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify(data)
   });
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la création du courtier';
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la création du Compagnie';
     throw new Error(errorMessage);
   }
   return await res.json();
 };
-export const updateBroker = async (id: string, data: any) => {
-  const res = await fetch(`${API_BASE}/brokers/${id}/`, {
+export const updateCompany = async (id: string, data: any) => {
+  const res = await fetch(`${API_BASE}/Companys/${id}/`, {
     method: 'PATCH',
     headers: getHeaders(),
     body: JSON.stringify(data)
   });
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la mise à jour du courtier';
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la mise à jour du Compagnie';
     throw new Error(errorMessage);
   }
   return await res.json();
 };
-export const deleteBroker = async (id: string) => {
-  const res = await fetch(`${API_BASE}/brokers/${id}/`, { method: 'DELETE', headers: getHeaders() });
-  if (!res.ok) throw new Error('Erreur lors de la suppression du courtier');
+export const deleteCompany = async (id: string) => {
+  const res = await fetch(`${API_BASE}/Companys/${id}/`, { method: 'DELETE', headers: getHeaders() });
+  if (!res.ok) throw new Error('Erreur lors de la suppression du Compagnie');
   return true;
 };
 // CRUD COMPANIES
-export const createCompany = async (data: any) => {
+export const createBroker = async (data: any) => {
   const res = await fetch(`${API_BASE}/companies/`, {
     method: 'POST',
     headers: getHeaders(),
@@ -392,12 +457,12 @@ export const createCompany = async (data: any) => {
   });
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la création de la compagnie';
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la création de la Courtier';
     throw new Error(errorMessage);
   }
   return await res.json();
 };
-export const updateCompany = async (id: string, data: any) => {
+export const updateBroker = async (id: string, data: any) => {
   const res = await fetch(`${API_BASE}/companies/${id}/`, {
     method: 'PATCH',
     headers: getHeaders(),
@@ -405,14 +470,14 @@ export const updateCompany = async (id: string, data: any) => {
   });
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la mise à jour de la compagnie';
+    const errorMessage = Object.values(errorData).flat()[0] as string || 'Erreur lors de la mise à jour de la Courtier';
     throw new Error(errorMessage);
   }
   return await res.json();
 };
-export const deleteCompany = async (id: string) => {
+export const deleteBroker = async (id: string) => {
   const res = await fetch(`${API_BASE}/companies/${id}/`, { method: 'DELETE', headers: getHeaders() });
-  if (!res.ok) throw new Error('Erreur lors de la suppression de la compagnie');
+  if (!res.ok) throw new Error('Erreur lors de la suppression de la Courtier');
   return true;
 };
 // PAYMENT DETAILS
@@ -466,10 +531,37 @@ export const getNotifications = async () => {
 export async function patchNotification(id: number, is_read: boolean) {
   const res = await fetch(`${API_BASE}/notifications/${id}/`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getHeaders(),
     body: JSON.stringify({ is_read }),
   });
   if (!res.ok) throw new Error('Erreur lors de la mise à jour');
+  return res.json();
+}
+
+export async function clearAllNotifications() {
+  const res = await fetch(`${API_BASE}/notifications/clear_all/`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Erreur lors de la suppression des notifications');
+  return res.json();
+}
+
+export async function deleteNotification(id: number) {
+  const res = await fetch(`${API_BASE}/notifications/${id}/`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Erreur lors de la suppression de la notification');
+  return res.json();
+}
+
+export async function markAllNotificationsAsRead() {
+  const res = await fetch(`${API_BASE}/notifications/mark_all_read/`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Erreur lors du marquage des notifications comme lues');
   return res.json();
 }
 
@@ -480,10 +572,36 @@ export const activateProviderAccount = async (userId: string, duration: string) 
     body: JSON.stringify({ duration })
   });
   if (!res.ok) {
-    let errorMsg = 'Erreur lors de l’activation du compte';
+    let errorMsg = 'Erreur lors de l\'activation du compte';
     if (res.headers.get('content-type')?.includes('application/json')) {
       const data = await res.json();
       errorMsg = data.error || errorMsg;
+    }
+    throw new Error(errorMsg);
+  }
+  return await res.json();
+};
+
+export const createSubadmin = async (data: {
+  username: string;
+  password: string;
+  role: string;
+  permissions: string[];
+}) => {
+  const res = await fetch(`${API_BASE}/users/create_subadmin/`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      username: data.username,
+      password: data.password,
+      permissions: data.permissions
+    })
+  });
+  if (!res.ok) {
+    let errorMsg = 'Erreur lors de la création du sous-admin';
+    if (res.headers.get('content-type')?.includes('application/json')) {
+      const errorData = await res.json();
+      errorMsg = errorData.error || errorMsg;
     }
     throw new Error(errorMsg);
   }

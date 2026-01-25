@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { getUsers, updateUser, activateProviderAccount } from "../services/api";
+import { getUsers, updateUser, activateProviderAccount, createSubadmin } from "../services/api";
 import { User } from "../types";
 import { useNavigate } from "react-router-dom";
 import { useNotification } from "../components/NotificationContext";
 import { useApi } from "../services/api";
+import { Eye } from "lucide-react";
 
 const formatDate = (dateString: string | null) => {
   if (!dateString) return "N/A";
@@ -22,8 +23,8 @@ const ALL_ROLES = [
   "admin",
   "subadmin",
   "provider",
-  "broker",
-  "company",
+  "Company",
+  "Broker",
 ] as const;
 const ALL_PERMISSIONS = [
   "can_edit_invoice",
@@ -43,6 +44,8 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [selectedUserForPermissions, setSelectedUserForPermissions] = useState<User | null>(null);
   const navigate = useNavigate();
   const { notify } = useNotification();
   const { call } = useApi();
@@ -52,7 +55,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
     password: string;
     permissions: string[];
   }>({ username: "", password: "", permissions: [] });
-  const [activationUserId, setActivationUserId] = useState<string | null>(null);
+  const [activationUserId, setActivationUserId] = useState<number | null>(null);
   const [activationDuration, setActivationDuration] =
     useState<string>("1_MONTH");
 
@@ -87,14 +90,39 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
   }, [subadminMode, subadminUser]);
 
   const handleToggleActive = async (user: User) => {
+    const newActiveStatus = !user.isActive;
+    
+    // Si on désactive le compte, annuler l'abonnement
+    const updateData: any = { isActive: newActiveStatus };
+    
+    if (!newActiveStatus) {
+      // Désactivation : annuler l'abonnement
+      updateData.subscription_status = "CANCELLED";
+      updateData.subscription_expiry = null;
+    }
+    
+    console.log('DEBUG: Sending update data:', updateData);
+    console.log('DEBUG: User being updated:', user);
+    
     await call(
-      () => updateUser(user.id, { isActive: !user.is_active }),
-      "Statut utilisateur mis à jour"
+      () => updateUser(String(user.id), updateData),
+      newActiveStatus ? "Compte activé" : "Compte désactivé et abonnement annulé"
     );
     await fetchUsers();
   };
 
-  const handleDateChange = (userId: string, date: string) => {
+  const formatDateForInput = (dateString: string | null | undefined): string => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      return date.toISOString().split('T')[0]; // Format yyyy-MM-dd
+    } catch (error) {
+      console.error('Erreur de formatage de date:', error);
+      return "";
+    }
+  };
+
+  const handleDateChange = (userId: number, date: string) => {
     setUsers((prevUsers) =>
       prevUsers.map((u) =>
         u.id === userId ? { ...u, subscriptionEndDate: date } : u
@@ -105,7 +133,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
   const handleSaveDate = async (user: User) => {
     await call(
       () =>
-        updateUser(user.id, { subscriptionEndDate: user.subscriptionEndDate }),
+        updateUser(String(user.id), { subscriptionEndDate: user.subscriptionEndDate }),
       `Date d'abonnement mise à jour pour ${user.username}.`
     );
     await fetchUsers();
@@ -113,6 +141,11 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
 
   const handleEditUser = (user: User) => {
     setEditingUser(user);
+  };
+
+  const handleShowPermissions = (user: User) => {
+    setSelectedUserForPermissions(user);
+    setShowPermissionsModal(true);
   };
 
   const handleEditChange = (field: string, value: any) => {
@@ -137,7 +170,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
     if (!editingUser) return;
     await call(
       () =>
-        updateUser(editingUser.id, {
+        updateUser(String(editingUser.id), {
           role: editingUser.role,
           permissions: editingUser.permissions,
         }),
@@ -154,7 +187,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
     }
     await call(
       () =>
-        updateUser("new", {
+        createSubadmin({
           username: newSubadmin.username,
           password: newSubadmin.password,
           role: "subadmin",
@@ -231,7 +264,7 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                 </th>
                 {!subadminMode && (
                   <th className="p-4 text-sm font-semibold text-slate-600">
-                    Permissions
+                    Actions permissions
                   </th>
                 )}
                 <th className="p-4 text-sm font-semibold text-slate-600">
@@ -252,35 +285,30 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                   <td className="p-4 text-slate-600 capitalize">{user.role}</td>
                   {!subadminMode && (
                     <td className="p-4 text-xs">
-                      {user.permissions && user.permissions.length > 0 ? (
-                        user.permissions.map((p) => (
-                          <span
-                            key={p}
-                            className="inline-block bg-slate-200 text-slate-700 rounded px-2 py-1 mr-1 mb-1"
-                          >
-                            {p}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
+                      <button
+                        onClick={() => handleShowPermissions(user)}
+                        className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        <Eye className="w-4 h-4" />
+                        Voir les permissions
+                      </button>
                     </td>
                   )}
                   <td className="p-4">
                     <span
                       className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.is_active
+                        user.isActive
                           ? "bg-green-100 text-green-800"
                           : "bg-red-100 text-red-800"
                       }`}
                     >
-                      {user.is_active ? "Actif" : "Inactif"}
+                      {user.isActive ? "Actif" : "Inactif"}
                     </span>
                   </td>
                   <td className="p-4 text-slate-600">
                     <input
                       type="date"
-                      value={user.subscriptionEndDate || ""}
+                      value={formatDateForInput(user.subscriptionEndDate)}
                       onChange={(e) =>
                         handleDateChange(user.id, e.target.value)
                       }
@@ -305,7 +333,9 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                             <option value="1_YEAR">1 an</option>
                           </select>
                           <button
-                            onClick={() => handleActivateProvider(user.id)}
+                            onClick={() =>
+                              handleActivateProvider(String(user.id))
+                            }
                             className="text-xs bg-green-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-green-700"
                           >
                             Valider
@@ -318,27 +348,33 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                           </button>
                         </>
                       ) : (
-                        <button
-                          onClick={() => setActivationUserId(user.id)}
-                          className={`text-xs font-semibold py-1 px-3 rounded-full ${
-                            user.is_active
-                              ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
-                              : "bg-green-100 text-green-800 hover:bg-green-200"
-                          }`}
-                        >
-                          {user.is_active ? "Désactiver" : "Activer"}
-                        </button>
+                        <div className="space-x-2">
+                          <button
+                            onClick={() => setActivationUserId(user.id)}
+                            className="text-xs bg-green-100 text-green-800 font-semibold py-1 px-3 rounded-full hover:bg-green-200"
+                          >
+                            Activer
+                          </button>
+                          {user.isActive && (
+                            <button
+                              onClick={() => handleToggleActive(user)}
+                              className="text-xs bg-yellow-100 text-yellow-800 font-semibold py-1 px-3 rounded-full hover:bg-yellow-200"
+                            >
+                              Désactiver
+                            </button>
+                          )}
+                        </div>
                       )
                     ) : (
                       <button
                         onClick={() => handleToggleActive(user)}
                         className={`text-xs font-semibold py-1 px-3 rounded-full ${
-                          user.is_active
+                          user.isActive
                             ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
                             : "bg-green-100 text-green-800 hover:bg-green-200"
                         }`}
                       >
-                        {user.is_active ? "Désactiver" : "Activer"}
+                        {user.isActive ? "Désactiver" : "Activer"}
                       </button>
                     )}
                     <button
@@ -494,6 +530,57 @@ const Admin: React.FC<AdminProps> = ({ subadminMode, user: subadminUser }) => {
                 className="px-4 py-2 bg-purple-600 text-white rounded"
               >
                 Créer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal des permissions */}
+      {showPermissionsModal && selectedUserForPermissions && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded shadow-lg w-full max-w-lg max-h-[80vh] flex flex-col">
+            <h2 className="text-xl font-bold mb-4">
+              Permissions de {selectedUserForPermissions.username}
+              {selectedUserForPermissions.permissions && selectedUserForPermissions.permissions.length > 0 && (
+                <span className="text-sm font-normal text-slate-500 ml-2">
+                  ({selectedUserForPermissions.permissions.length} permission{selectedUserForPermissions.permissions.length > 1 ? 's' : ''})
+                </span>
+              )}
+            </h2>
+            <div className="flex-1 overflow-y-auto mb-4 pr-2">
+              {selectedUserForPermissions.permissions && selectedUserForPermissions.permissions.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {selectedUserForPermissions.permissions.map((perm) => (
+                      <span
+                        key={perm}
+                        className="inline-block bg-blue-100 text-blue-800 rounded px-3 py-1 text-sm font-medium border border-blue-200 hover:bg-blue-200 transition-colors"
+                      >
+                        {perm}
+                      </span>
+                    ))}
+                  </div>
+                  {selectedUserForPermissions.permissions.length > 8 && (
+                    <p className="text-xs text-slate-500 mt-2 text-center">
+                      ⬆️ Faites défiler pour voir toutes les permissions ⬇️
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-32">
+                  <p className="text-slate-500 italic">Aucune permission spécifique</p>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end mt-6 pt-4 border-t border-slate-200">
+              <button
+                onClick={() => {
+                  setShowPermissionsModal(false);
+                  setSelectedUserForPermissions(null);
+                }}
+                className="px-4 py-2 bg-slate-200 rounded hover:bg-slate-300"
+              >
+                Fermer
               </button>
             </div>
           </div>

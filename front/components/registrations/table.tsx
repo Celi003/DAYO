@@ -14,16 +14,18 @@ import {
   Eye,
   FileText,
   Search,
+  Trash2,
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 
 export const InvoiceTable: React.FC<{
   invoices: Invoice[];
-  companies: Company[];
-  brokers: Broker[];
+  companies: Broker[];
+  Companys: Company[];
   user: User;
   onDetails: (inv: Invoice) => void;
   onReminder: (inv: Invoice) => void;
+  onDelete?: (inv: Invoice) => void;
   loading: boolean;
   search: string;
   setSearch: (search: string) => void;
@@ -36,10 +38,11 @@ export const InvoiceTable: React.FC<{
 }> = ({
   invoices,
   companies,
-  brokers,
+  Companys,
   user,
   onDetails,
   onReminder,
+  onDelete,
   loading,
   search,
   setSearch,
@@ -50,8 +53,10 @@ export const InvoiceTable: React.FC<{
   const [page, setPage] = useState<number>(1);
   const filtered = useMemo(() => {
     return invoices.filter((inv: Invoice) => {
-      const companyMatch =
-        !filters.company || inv.company.name === filters.company;
+      const entityMatch =
+        !filters.Broker ||
+        inv.Broker?.name === filters.Broker ||
+        inv.Company?.name === filters.Broker;
       const status = getInvoiceStatus(inv).text;
       const statusMatch = !filters.status || status === filters.status;
       const date = inv.deposit_date || "";
@@ -67,7 +72,7 @@ export const InvoiceTable: React.FC<{
           v?.toString().toLowerCase().includes(search.toLowerCase())
         );
       return (
-        companyMatch &&
+        entityMatch &&
         statusMatch &&
         dateMinMatch &&
         dateMaxMatch &&
@@ -109,14 +114,17 @@ export const InvoiceTable: React.FC<{
       </div>
       <div className="flex flex-col lg:flex-row lg:items-center gap-4 mb-4">
         <select
-          value={filters.company}
-          onChange={(e) => handleFilterChange("company", e.target.value)}
+          value={filters.Broker}
+          onChange={(e) => handleFilterChange("Broker", e.target.value)}
           className="w-full p-2 border border-slate-300 rounded-md shadow-sm bg-white"
         >
-          <option value="">Toutes les compagnies</option>
-          {companies.map((c: Company) => (
-            <option key={c.id} value={c.name}>
-              {c.name}
+          <option value="">Toutes les Entités</option>
+          {Array.from(new Set([
+            ...companies.map((c: Broker) => c.name),
+            ...Companys.map((co: Company) => co.name)
+          ])).map((name) => (
+            <option key={name} value={name}>
+              {name}
             </option>
           ))}
         </select>
@@ -186,13 +194,7 @@ export const InvoiceTable: React.FC<{
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                ID Facture
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Compagnie
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                Courtier
+                Entité
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
                 Date dépôt
@@ -210,26 +212,21 @@ export const InvoiceTable: React.FC<{
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {paged.map((invoice) => {
-              const company = companies.find(
-                (c) => c.id === invoice.company.id
-              );
-              const broker = brokers.find((b) => b.id === invoice.broker?.id);
+              const brokerName = invoice.Broker?.name || "";
+              const companyName = invoice.Company?.name || "";
+              const entityLabel = brokerName && companyName
+                ? `${brokerName} (${companyName})`
+                : (brokerName || companyName || "N/A");
 
               return (
                 <tr
                   key={invoice.id}
                   className="hover:bg-gray-50 transition-colors"
                 >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {invoice.id}
-                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">
-                      {company?.name || "N/A"}
+                      {entityLabel}
                     </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
-                    {broker?.name || "N/A"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell">
                     {formatDate(invoice.deposit_date)}
@@ -252,7 +249,7 @@ export const InvoiceTable: React.FC<{
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => onDetails(invoice)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
                       >
                         <Eye className="w-3 h-3 md:hidden" />
                         <span className="hidden md:inline">Détails</span>
@@ -264,6 +261,15 @@ export const InvoiceTable: React.FC<{
                         >
                           <Bell className="w-3 h-3 md:hidden" />
                           <span className="hidden md:inline">Relance</span>
+                        </button>
+                      )}
+                      {user.role === "admin" && onDelete && (
+                        <button
+                          onClick={() => onDelete(invoice)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3 md:hidden" />
+                          <span className="hidden md:inline">Supprimer</span>
                         </button>
                       )}
                     </div>

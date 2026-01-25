@@ -1,10 +1,10 @@
 
 export interface User {
-  id: string;
+  id: number;
   username: string;
   email?: string;
-  role: "admin" | "provider" | "subadmin" | "broker" | "company";
-  is_active: boolean;
+  role: "admin" | "provider" | "subadmin" | "Company" | "Broker";
+  isActive: boolean;
   permissions?: string[];
   subscriptionEndDate?: string;
   subscription_status?: "active" | "inactive" | "expired";
@@ -13,30 +13,32 @@ export interface User {
 
 
 export interface Partner {
-  id: string;
+  id: number;
   name: string;
   address?: string;
   phone?: string;
   email?: string;
-  type: "provider" | "broker" | "company";
-  company_id?: string; // For brokers
-}
-
-export interface Company {
-  id: string;
-  name: string;
-  broker?: Broker;
-  contact_email: string;
+  type: "provider" | "Company" | "Broker";
+  Broker_id?: number; // For Companys
 }
 
 export interface Broker {
-  id: string;
+  id: number;
   name: string;
-  companyId?: string;
+  Companys?: Company[];
+  Company_ids?: number[];
+  contact_email: string;
+}
+
+export interface Company {
+  id: number;
+  name: string;
+  email?: string;
+  BrokerId?: number;
 }
 
 export interface Invoice {
-  id: string;
+  id: number;
   deposit_date: string;
   invoice_number: string;
   paid_amount: string;
@@ -46,20 +48,21 @@ export interface Invoice {
   invoice_month: string; 
   billed_amount: number;
   provider: Provider;
-  company: Company;
-  broker?: Broker | null;
+  Broker?: Broker | null;
+  Company?: Company | null;
   payments?: Payment[];
   rejections?: Rejection[];
 }
 
 export interface Provider extends Pick<User, "subscription_expiry" | "subscription_status"> {
-  id: string;
+  id: number;
   user: User;
+  user_id: number;
   name: string;
 }
 
 export interface Payment {
-  id: string;
+  id: number;
   amount: number;
   payment_date: string;
   invoice: number;
@@ -67,8 +70,9 @@ export interface Payment {
 }
 
 export interface Rejection {
-  id: string;
+  id: number;
   rejected_amount: number;
+  amount: number; // Mapped from rejected_amount in API
   rejection_reason: string;
   rejection_date: string;
 }
@@ -88,7 +92,7 @@ export type TransactionType = "Paiement" | "Rejet";
 export interface Transaction {
   id: string;
   date: string;
-  partnerId?: string;
+  partnerId?: number;
   partnerName: string;
   invoiceMonth: string;
   status: string;
@@ -96,5 +100,7 @@ export interface Transaction {
   amount: number;
   reason?: string;
   providerName?: string;
+  BrokerName?: string;
+  CompanyName?: string;
 }
 export type Page = 'dashboard' | 'registrations' | 'payments' | 'partners' | 'admin' | 'notifications';

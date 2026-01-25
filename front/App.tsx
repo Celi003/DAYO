@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { User } from './types';
 import * as api from './services/api';
 import { NotificationProvider } from './components/NotificationContext';
+import { UnreadNotificationsProvider, useUnreadNotifications } from './contexts/UnreadNotificationsContext';
 
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 const Registrations = React.lazy(() => import('./pages/Registrations'));
@@ -17,6 +18,7 @@ const Entities = React.lazy(() => import('./pages/Entities'));
 const PaymentDetails = React.lazy(() => import('./pages/PaymentDetails'));
 const AuditLog = React.lazy(() => import('./pages/AuditLog'));
 const Notifications = React.lazy(() => import('./pages/Notifications'));
+const ExportPreview = React.lazy(() => import('./pages/ExportPreview'));
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -42,19 +44,24 @@ const App: React.FC = () => {
     setCurrentUser(null);
   };
 
-  const Layout = ({ children }: { children: React.ReactNode }) => (
-    <div className="flex h-screen bg-slate-100">
-      <Sidebar
-        user={currentUser!}
-        onLogout={handleLogout}
-        isCollapsed={isSidebarCollapsed}
-        setCollapsed={setIsSidebarCollapsed}
-      />
-      <main className="flex-1 overflow-y-auto transition-all duration-300 ease-in-out p-6">
-        {children}
-      </main>
-    </div>
-  );
+  const Layout = ({ children }: { children: React.ReactNode }) => {
+    const { unreadCount } = useUnreadNotifications();
+    
+    return (
+      <div className="flex h-screen bg-slate-100">
+        <Sidebar
+          user={currentUser!}
+          onLogout={handleLogout}
+          isCollapsed={isSidebarCollapsed}
+          setCollapsed={setIsSidebarCollapsed}
+          unreadNotificationsCount={unreadCount}
+        />
+        <main className="flex-1 overflow-y-auto transition-all duration-300 ease-in-out p-6">
+          {children}
+        </main>
+      </div>
+    );
+  };
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-screen bg-slate-100"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-slate-500"></div></div>;
@@ -69,7 +76,7 @@ const App: React.FC = () => {
   
   const isSubscriptionExpired = currentUser.role === 'provider' && currentUser.subscriptionEndDate && new Date(currentUser.subscriptionEndDate) < new Date();
 
-  if (!currentUser.is_active) {
+  if (!currentUser.isActive) {
      return (
         <div className="flex flex-col items-center justify-center h-screen bg-slate-100 text-center p-4">
             <h1 className="text-2xl font-bold text-red-600 mb-4">Accès refusé</h1>
@@ -92,22 +99,105 @@ const App: React.FC = () => {
 
   return (
     <NotificationProvider>
-      <Router>
-        <Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-100"><div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-slate-500"></div></div>}>
-          <Routes>
-            <Route path="/" element={<Layout><Dashboard user={currentUser} /></Layout>} />
-            <Route path="/notifications" element={<Layout><Notifications /></Layout>} />
-            <Route path="/registrations" element={<Layout><Registrations user={currentUser} /></Layout>} />
-            <Route path="/payments" element={<Layout><Payments user={currentUser} /></Layout>} />
-            <Route path="/partners" element={<Layout><Partners user={currentUser} /></Layout>} />
-            <Route path="/admin" element={<Layout>{currentUser.role === 'admin' ? <Admin /> : <Dashboard user={currentUser} />}</Layout>} />
-            <Route path="/entities" element={<Layout><Entities /></Layout>} />
-            <Route path="/payment-details" element={<Layout><PaymentDetails /></Layout>} />
-            <Route path="/audit-log" element={<Layout><AuditLog /></Layout>} />
-            {/* Garder les routes sans layout pour login/signup si nécessaire */}
-          </Routes>
-        </Suspense>
-      </Router>
+      <UnreadNotificationsProvider currentUser={currentUser}>
+        <Router>
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center h-screen bg-slate-100">
+                <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-slate-500"></div>
+              </div>
+            }
+          >
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <Layout>
+                    <Dashboard user={currentUser} />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <Layout>
+                    <Notifications />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/registrations"
+                element={
+                  <Layout>
+                    <Registrations user={currentUser} />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/payments"
+                element={
+                  <Layout>
+                    <Payments user={currentUser} />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/partners"
+                element={
+                  <Layout>
+                    <Partners user={currentUser} />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <Layout>
+                    {(currentUser.role === "admin" || currentUser.role === "subadmin") ? (
+                      <Admin subadminMode={currentUser.role === "subadmin"} user={currentUser} />
+                    ) : (
+                      <Dashboard user={currentUser} />
+                    )}
+                  </Layout>
+                }
+              />
+              <Route
+                path="/entities"
+                element={
+                  <Layout>
+                    <Entities />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/payment-details"
+                element={
+                  <Layout>
+                    <PaymentDetails />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/audit-log"
+                element={
+                  <Layout>
+                    <AuditLog />
+                  </Layout>
+                }
+              />
+              <Route
+                path="/export-preview"
+                element={
+                  <Layout>
+                    <ExportPreview />
+                  </Layout>
+                }
+              />
+              {/* Garder les routes sans layout pour login/signup si nécessaire */}
+            </Routes>
+          </Suspense>
+        </Router>
+      </UnreadNotificationsProvider>
     </NotificationProvider>
   );
 };

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Invoice, Company, Broker } from '../types';
+import { Invoice } from '../types';
 import { addPayment, addRejection, generateReclamationLetter } from '../services/api';
 import Modal from './Modal';
 import { useApi } from '../services/api';
@@ -8,13 +8,12 @@ import { formatCurrency } from '../utils/helpers';
 
 interface InvoiceDetailModalProps {
     invoice: Invoice;
-    company: Company;
-    broker: Broker | null;
     onClose: () => void;
     onUpdate: (updatedInvoice: Invoice) => void;
+    userRole?: string;
 }
 
-const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: Invoice) => void; isSettled?: boolean }> = ({ invoiceId, onUpdate, isSettled }) => {
+const TransactionForm: React.FC<{ invoiceId: number; onUpdate: (updatedInvoice: Invoice) => void; isSettled?: boolean }> = ({ invoiceId, onUpdate, isSettled }) => {
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
     const [rejectionAmount, setRejectionAmount] = useState('');
@@ -46,13 +45,13 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
         if (!validatePayment()) return;
         setIsSubmittingPayment(true);
         try {
-            const updatedInvoice = await call(() => addPayment(invoiceId, {
+            const updatedInvoice = await call(() => addPayment(String(invoiceId), {
                 invoice: invoiceId,
                 amount: parseFloat(paymentAmount),
                 payment_date: paymentDate,
                 payment_method: 'VIREMENT',
             }), 'Paiement ajouté');
-            if (updatedInvoice) {
+            if (updatedInvoice) {   
             onUpdate(updatedInvoice);
             setPaymentAmount('');
                 setErrors({});
@@ -67,7 +66,7 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
         if (!validateRejection()) return;
         setIsSubmittingRejection(true);
         try {
-            const updatedInvoice = await call(() => addRejection(invoiceId, {
+            const updatedInvoice = await call(() => addRejection(String(invoiceId), {
                 invoice: invoiceId,
                 rejected_amount: parseFloat(rejectionAmount),
                 rejection_reason: rejectionReason,
@@ -143,16 +142,19 @@ const TransactionForm: React.FC<{ invoiceId: string; onUpdate: (updatedInvoice: 
 }
 
 
-const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, company, broker, onClose, onUpdate }) => {
+const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, onClose, onUpdate, userRole }) => {
     
     const stats = useMemo(() => {
         const totalPaid = invoice.payments!.reduce((sum, p) => sum + p.amount, 0);
-        const totalRejected = invoice.rejections!.reduce((sum, r) => sum + r.rejected_amount, 0);
+        const totalRejected = invoice.rejections!.reduce((sum, r) => sum + r.amount, 0);
         const outstanding = invoice.billed_amount - totalPaid - totalRejected;
         return { totalPaid, totalRejected, outstanding };
     }, [invoice]);
 
-    const title = `Détails de la facture #${String(invoice.id).toUpperCase()}`;
+    const entityLabel = invoice.Broker?.name && invoice.Company?.name
+        ? `${invoice.Broker.name} (${invoice.Company.name})`
+        : (invoice.Broker?.name || invoice.Company?.name || 'N/A');
+    const title = `Détails de la facture`;
     
     const [reclamationLetter, setReclamationLetter] = useState<string | null>(null);
     const [isLoadingLetter, setIsLoadingLetter] = useState(false);
@@ -160,7 +162,7 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
         setIsLoadingLetter(true);
         setReclamationLetter(null);
         try {
-            const data = await generateReclamationLetter(invoice.id);
+            const data = await generateReclamationLetter(String(invoice.id));
             setReclamationLetter(data.letter);
         } catch (e: any) {
             setReclamationLetter(e.message || 'Erreur lors de la génération de la lettre.');
@@ -174,15 +176,9 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
             {/* Summary */}
             <div className="bg-slate-50 p-4 rounded-lg mb-6">
                 <div className="flex justify-between items-center mb-2">
-                    <p className="text-slate-600">Compagnie:</p>
-                    <p className="font-bold text-lg">{company.name}</p>
+                    <p className="text-slate-600">Entité:</p>
+                    <p className="font-bold text-lg">{entityLabel}</p>
                 </div>
-                {broker &&
-                  <div className="flex justify-between items-center mb-2">
-                      <p className="text-slate-600">Courtier:</p>
-                      <p className="font-semibold">{broker.name}</p>
-                  </div>
-                }
                  <div className="flex justify-between items-center mb-4">
                     <p className="text-slate-600">Mois de la facture:</p>
                     <p className="font-semibold">{invoice.invoice_month}</p>
@@ -208,8 +204,10 @@ const InvoiceDetailModal: React.FC<InvoiceDetailModalProps> = ({ invoice, compan
                 </div>
             </div>
 
-            {/* Transactions */}
+            {/* Transactions - Only show for providers, not for admins */}
+            {userRole !== 'admin' && (
             <TransactionForm invoiceId={invoice.id} onUpdate={onUpdate} isSettled={stats.totalPaid + stats.totalRejected >= invoice.billed_amount} />
+            )}
 
             <div className="mt-6">
                 <button onClick={handleGenerateLetter} className="bg-orange-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-orange-700 text-sm">

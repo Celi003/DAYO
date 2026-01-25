@@ -8,6 +8,7 @@ interface SidebarProps {
   onLogout: () => void;
   isCollapsed: boolean;
   setCollapsed: (isCollapsed: boolean) => void;
+  unreadNotificationsCount?: number;
 }
 
 const NavIcon: React.FC<{ name: Page | 'logout' }> = ({ name }: { name: Page | 'logout' }) => {
@@ -46,7 +47,7 @@ const pageToPath: { [key in Page]: string } = {
   admin: '/admin',
 };
 
-const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setCollapsed }) => {
+const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setCollapsed, unreadNotificationsCount = 0 }) => {
   const location = useLocation();
   const baseNavItems: { id: Page; label: string; path: string }[] = [
     { id: 'dashboard', label: 'Tableau de bord', path: pageToPath.dashboard },
@@ -56,7 +57,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setColla
   ];
   
   const adminNavItem = { id: 'admin' as Page, label: 'Administration', path: pageToPath.admin };
-  const navItems = user.role === 'admin' ? [...baseNavItems, adminNavItem] : baseNavItems;
+  const isAdminLike = user.role === 'admin' || user.role === 'subadmin';
+  const navItems = isAdminLike ? [...baseNavItems, adminNavItem] : baseNavItems;
   navItems.splice(1, 0, { id: 'notifications' as Page, label: 'Notifications', path: pageToPath.notifications });
 
 
@@ -68,10 +70,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setColla
       onMouseEnter={() => setCollapsed(false)}
       onMouseLeave={() => setCollapsed(true)}
     >
-      <div className="h-20 flex items-center justify-center border-b border-slate-700">
-         <div className="bg-white text-slate-800 font-bold text-2xl w-12 h-12 flex items-center justify-center rounded-lg">
-          {user.username.charAt(0).toUpperCase()}
-        </div>
+      <div className="h-20 flex items-center justify-center border-b border-slate-700 px-3">
+        <img src="/Images/Logo.png" alt="TakaCheck" className={`${isCollapsed ? 'h-12' : 'h-14'} object-contain`} />
       </div>
       <nav className="flex-1 px-4 py-6">
         <ul>
@@ -79,7 +79,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setColla
             <li key={item.id}>
               <Link
                 to={item.path}
-                className={`w-full flex items-center px-4 py-3 my-1 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                className={`w-full flex items-center px-4 py-3 my-1 rounded-lg text-sm font-medium transition-colors duration-200 relative ${
                   isCollapsed ? 'justify-center' : ''
                 } ${
                   location.pathname === item.path
@@ -91,9 +91,15 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, isCollapsed, setColla
               >
                 <NavIcon name={item.id} />
                 {!isCollapsed && <span className="ml-3 whitespace-nowrap">{item.label}</span>}
+                {item.id === 'notifications' && unreadNotificationsCount > 0 && (
+                  <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse">
+                    {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                  </div>
+                )}
               </Link>
             </li>
           ))}
+          {/* Export PDF menu removed — export is available from Enregistrements actions */}
         </ul>
       </nav>
        <div className="px-4 py-6 border-t border-slate-700">

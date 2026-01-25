@@ -8,7 +8,7 @@ import {
   Tooltip,
 } from "recharts";
 import { formatCurrency } from "../../utils/helpers";
-import { Partner } from "../../types";
+import { Partner, Provider } from "../../types";
 
 const PIE_COLORS = [
   "#3b82f6",
@@ -50,7 +50,7 @@ const CustomPieTooltip = ({ active, payload }: any) => {
 export const DPieChart: React.FC<{
   data: any[];
   setFilterPartner: (id: string) => void;
-  partners: Partner[];
+  partners: Provider[];
 }> = ({ data, setFilterPartner, partners }) => {
   return (
     <Suspense
@@ -76,7 +76,7 @@ export const DPieChart: React.FC<{
                 const partnerObj = partners.find(
                   (pt) => pt.name === entry.name
                 );
-                if (partnerObj) setFilterPartner(partnerObj.id);
+                if (partnerObj) setFilterPartner(String(partnerObj.id));
               }
             }}
             cursor="pointer"

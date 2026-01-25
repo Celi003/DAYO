@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useBillingData } from "./useApi";
-import { Broker, Company, Invoice, Transaction, TransactionType } from "@/types";
+import { Company, Broker, Invoice, Transaction, TransactionType } from "@/types";
 import { useFilter } from "./useFilter";
 
 type PaymentTransaction = {
@@ -25,7 +25,7 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
     col: "date",
     asc: false,
   });
-  const { invoices, companies, brokers, loading, companyMap, brokerMap } =
+  const { invoices, companies, Companys, loading, BrokerMap, CompanyMap } =
     useBillingData(selectedYear);
 
   const config = {
@@ -80,19 +80,38 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
     const allTransactions: Transaction[] = [];
 
     invoices.forEach((invoice: Invoice) => {
-      const isCompany = !!invoice.company?.id;
-      const partnerId = isCompany
-        ? invoice.company.id
-        : invoice.broker?.id || "";
-      const partnerName = isCompany
-        ? (companyMap.get(partnerId) as Company).name || "Inconnu"
-        : (brokerMap.get(partnerId) as Broker).name?.toLowerCase() || "Inconnu";
+      // Ne traiter que les factures qui ont des paiements ou des rejets
+      const hasPayments = invoice.payments && invoice.payments.length > 0;
+      const hasRejections = invoice.rejections && invoice.rejections.length > 0;
+      
+      if (!hasPayments && !hasRejections) {
+        return; // Ignorer les factures sans paiements ni rejets
+      }
 
-      invoice.payments?.forEach((payment) => {
-        console.log("Adding payment transaction", {
-          partnerName,
-          partnerId,
-        });
+      const isBroker = !!invoice.Broker?.id;
+      const partnerId: number | undefined = isBroker
+        ? invoice.Broker?.id
+        : invoice.Company?.id;
+      
+      // Récupérer les noms de Courtier et Compagnie
+      const BrokerName = invoice.Broker?.id 
+        ? (BrokerMap.get(invoice.Broker.id) as Broker)?.name 
+        : undefined;
+      const CompanyName = invoice.Company?.id 
+        ? (CompanyMap.get(invoice.Company.id) as Company)?.name 
+        : undefined;
+      
+      // Déterminer le nom du partenaire principal
+      let partnerName = "Inconnu";
+      if (isBroker && BrokerName) {
+        partnerName = BrokerName;
+      } else if (!isBroker && CompanyName) {
+        partnerName = CompanyName;
+      }
+
+      // Ajouter les paiements
+      if (hasPayments && invoice.payments) {
+        invoice.payments.forEach((payment) => {
         allTransactions.push({
           id: `payment-${invoice.id}-${payment.id}`,
           date: payment.payment_date,
@@ -103,14 +122,15 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
           type: "Paiement",
           amount: payment.amount,
           providerName: invoice.provider.name,
-        });
+            BrokerName,
+            CompanyName,
       });
-
-      invoice.rejections?.forEach((rejection) => {
-        console.log("Adding payment rejection", {
-          partnerName,
-          partnerId,
         });
+      }
+
+      // Ajouter les rejets
+      if (hasRejections && invoice.rejections) {
+        invoice.rejections.forEach((rejection) => {
         allTransactions.push({
           id: `rejection-${invoice.id}-${rejection.id}`,
           date: rejection.rejection_date,
@@ -122,12 +142,15 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
           amount: rejection.rejected_amount,
           reason: rejection.rejection_reason,
           providerName: invoice.provider.name,
+            BrokerName,
+            CompanyName,
+          });
         });
-      });
+      }
     });
 
     return allTransactions;
-  }, [invoices, companyMap, brokerMap]);
+  }, [invoices, BrokerMap, CompanyMap]);
 
   const monthlyTransactions: PaymentTransaction[] = useMemo(() => {
     const byMonth: { [key: string]: PaymentTransaction } = {};
@@ -216,10 +239,10 @@ export function usePayments(selectedYear: number, filters: FilterConfig) {
     transactions,
     monthlyTransactions,
     config,
-    companyMap,
+    BrokerMap,
     companies,
     sort,
     handleSort,
-    brokers,
+    Companys,
   };
 }

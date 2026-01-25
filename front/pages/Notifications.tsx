@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { Notification } from "../types";
-import { useApi, getNotifications, patchNotification } from "../services/api";
+import { useApi, getNotifications, patchNotification, clearAllNotifications, deleteNotification, markAllNotificationsAsRead } from "../services/api";
 import { useNotification } from "../components/NotificationContext";
+import { useUnreadNotifications } from "../contexts/UnreadNotificationsContext";
+import { Trash2 } from "lucide-react";
 
 const typeLabel: Record<string, string> = {
   REMINDER: "Relance",
@@ -58,16 +60,21 @@ const Notifications: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const { call } = useApi();
   const { notify } = useNotification();
+  const { updateUnreadCount, decrementUnreadCount, setUnreadCount, incrementUnreadCount } = useUnreadNotifications();
 
   const load = async () => {
     setLoading(true);
     const data = await call(() => getNotifications());
     setNotifications(data || []);
+    // Mettre à jour le compteur après avoir chargé les notifications
+    await updateUnreadCount();
     setLoading(false);
   };
 
   useEffect(() => {
     load();
+    // Marquer toutes les notifications comme vues lors de l'accès à la page
+    // (optionnel: vous pouvez décider si visiter la page = marquer comme lu automatiquement)
   }, []);
 
   const handleMark = async (notif: Notification, read: boolean) => {
@@ -82,6 +89,54 @@ const Notifications: React.FC = () => {
         n.id === notif.id ? { ...n, is_read: read } : n
       )
     );
+    
+    // Mettre à jour le compteur immédiatement
+    if (read && !notif.is_read) {
+      // Marquer comme lu: décrémenter le compteur
+      decrementUnreadCount();
+    } else if (!read && notif.is_read) {
+      // Marquer comme non lu: incrémenter le compteur
+      incrementUnreadCount();
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await call(() => markAllNotificationsAsRead(), "Toutes les notifications ont été marquées comme lues");
+      // Mettre à jour l'état local
+      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+      // Réinitialiser le compteur à 0
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('Erreur lors du marquage:', error);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (window.confirm("Êtes-vous sûr de vouloir supprimer toutes les notifications ?")) {
+      const result = await call(() => clearAllNotifications(), "Toutes les notifications ont été supprimées");
+      if (result) {
+        setNotifications([]);
+        // Réinitialiser le compteur à 0
+        setUnreadCount(0);
+      }
+    }
+  };
+
+  const handleDelete = async (notif: Notification) => {
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer la notification "${notif.message}"?`)) {
+      const result = await call(() => deleteNotification(notif.id), "Notification supprimée");
+      if (result) {
+        setNotifications((notifications: Notification[]) =>
+          notifications.filter((n: Notification) => n.id !== notif.id)
+        );
+        
+        // Si la notification supprimée n'était pas lue, décrémenter le compteur
+        if (!notif.is_read) {
+          decrementUnreadCount();
+        }
+      }
+    }
   };
 
   const getNotificationColors = (type: string) => {
@@ -91,12 +146,30 @@ const Notifications: React.FC = () => {
   return (
     <div className="p-8 max-w-3xl mx-auto">
       <h1 className="text-3xl font-bold mb-6">Notifications</h1>
-      <button
-        onClick={load}
-        className="mb-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-      >
-        Rafraîchir
-      </button>
+      <div className="flex gap-4 mb-4">
+        <button
+          onClick={load}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          Rafraîchir
+        </button>
+        {notifications.length > 0 && notifications.some(n => !n.is_read) && (
+          <button
+            onClick={handleMarkAllAsRead}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            Marquer toutes comme lues
+          </button>
+        )}
+        {notifications.length > 0 && (
+          <button
+            onClick={handleClearAll}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Supprimer toutes
+          </button>
+        )}
+      </div>
       {loading ? (
         <div>Chargement...</div>
       ) : notifications.length === 0 ? (
@@ -108,19 +181,24 @@ const Notifications: React.FC = () => {
             return (
               <li
                 key={notif.id}
-                className={`p-4 rounded-lg shadow-sm flex items-center justify-between border-l-4 transition-all duration-200 hover:shadow-md ${
+                className={`p-4 rounded-lg shadow-sm flex items-center justify-between border-l-4 transition-all duration-200 hover:shadow-md relative ${
                   notif.is_read
                     ? `${colors.bgRead} ${colors.border} opacity-75`
                     : `${colors.bg} ${colors.border}`
                 }`}
               >
+                {!notif.is_read && (
+                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse shadow-lg">
+                    NEW
+                  </div>
+                )}
                 <div className="flex-1">
                   <div
-                    className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mb-2 ${colors.badge}`}
+                    className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mb-2 ${colors.badge} relative`}
                   >
                     {typeLabel[notif.notif_type] || notif.notif_type}
                     {!notif.is_read && (
-                      <span className="ml-1 w-2 h-2 bg-current rounded-full opacity-60"></span>
+                      <span className="ml-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
                     )}
                   </div>
                   <div className={`text-base font-medium ${colors.text} mb-1`}>
@@ -155,6 +233,14 @@ const Notifications: React.FC = () => {
                       Marquer comme non lue
                     </button>
                   )}
+                  <button
+                    onClick={() => handleDelete(notif)}
+                    className="text-xs bg-red-600 text-white px-3 py-1.5 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1 transition-colors flex items-center"
+                    aria-label={`Supprimer la notification "${notif.message}"`}
+                  >
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Supprimer
+                  </button>
                 </div>
               </li>
             );

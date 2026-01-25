@@ -5,13 +5,14 @@ import React from "react";
 const RevenueDetailsModalContent: React.FC<{
   data: Invoice[];
   partnerMap: Map<string, string>;
-}> = ({ data, partnerMap }) => {
+  userRole: string;
+}> = ({ data, partnerMap, userRole }) => {
   return (
     <table className="w-full text-left">
       <thead className="bg-slate-50 border-b">
         <tr>
           <th className="p-3 text-sm font-semibold text-slate-600">
-            Partenaire
+            {userRole === 'admin' ? 'Prestataire' : 'Entité'}
           </th>
           <th className="p-3 text-sm font-semibold text-slate-600">
             Mois Facture
@@ -28,7 +29,9 @@ const RevenueDetailsModalContent: React.FC<{
         {data.map((inv) => (
           <tr key={inv.id} className="border-b last:border-0 hover:bg-slate-50">
             <td className="p-3 font-medium">
-              {partnerMap.get(inv.provider.id) || inv.provider.id}
+              {userRole === 'admin'
+                ? (partnerMap.get(String(inv.provider.id)) || inv.provider.id)
+                : (inv.Broker?.name || inv.Company?.name || 'Inconnu')}
             </td>
             <td className="p-3 text-slate-600">{inv.invoice_month}</td>
             <td className="p-3 text-slate-600">

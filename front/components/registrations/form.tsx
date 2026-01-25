@@ -1,33 +1,74 @@
-import { useApi, addInvoice } from "@/services/api";
-import { Company, Broker, Invoice, User } from "@/types";
-import { useState, useMemo } from "react";
-import { useNotification } from "../NotificationContext";
+import { useApi, addInvoice, getProviders } from "@/services/api";
+import { Broker, Company, Invoice, User } from "@/types";
+import { useState, useMemo, useEffect } from "react";
 
 export const AddInvoiceForm: React.FC<{
-  companies: Company[];
-  brokers: Broker[];
-  providerId: string | null;
+  companies: Broker[];
+  Companys: Company[];
+  providerId: number | null;
   onAddInvoice: (invoice: Invoice) => void;
   user: User;
-}> = ({ companies, brokers, providerId, onAddInvoice }) => {
-  const [companyId, setCompanyId] = useState("");
-  const [brokerId, setBrokerId] = useState<string | null>(null);
+}> = ({ companies, Companys, providerId, onAddInvoice, user }) => {
+  const [BrokerId, setBrokerId] = useState<number | null>(null);
+  const [CompanyId, setCompanyId] = useState<number | null>(null);
   const [invoiceMonth, setInvoiceMonth] = useState("");
   const [depositDate, setDepositDate] = useState("");
   const [amount, setAmount] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
-  const { notify } = useNotification();
   const { call } = useApi();
 
-  const availableBrokers = useMemo(() => {
-    if (!companyId) return [];
-    return brokers.filter((b) => b.companyId === companyId);
-  }, [companyId, brokers]);
+  // If the parent didn't supply providerId yet (partners still loading after login),
+  // try to resolve it by fetching providers and matching current user.
+  const [resolvedProviderId, setResolvedProviderId] = useState<number | null>(providerId);
+  useEffect(() => {
+    setResolvedProviderId(providerId);
+  }, [providerId]);
+
+  useEffect(() => {
+    const tryResolve = async () => {
+      if ((resolvedProviderId === null || resolvedProviderId === undefined) && user) {
+        try {
+          const provs = await call(() => getProviders());
+          if (Array.isArray(provs)) {
+            const found = provs.find((p: any) => p.user && p.user.id === user.id);
+            if (found) setResolvedProviderId(found.id);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+    tryResolve();
+  }, [resolvedProviderId, user, call]);
+
+  // Filtrer les Compagnies selon la Courtier sélectionnée
+  const filteredCompanys = useMemo(() => {
+    if (!BrokerId) {
+      // Si aucune Courtier n'est sélectionnée, afficher tous les Compagnies
+      return Companys;
+    }
+    
+    // Si une Courtier est sélectionnée, afficher seulement ses Compagnies
+    const selectedBroker = companies.find(c => c.id === BrokerId);
+    if (!selectedBroker || !selectedBroker.Companys) {
+      return [];
+    }
+    
+    return selectedBroker.Companys;
+  }, [BrokerId, companies, Companys]);
+
+  // Réinitialiser le Compagnie sélectionné quand la Courtier change
+  const handleBrokerChange = (newBrokerId: number | null) => {
+    setBrokerId(newBrokerId);
+    setCompanyId(null); // Réinitialiser le Compagnie
+  };
+
+
 
   const validate = () => {
     const errs: { [key: string]: string } = {};
-    if (!companyId) errs.companyId = "Compagnie requise";
+    if (!BrokerId && !CompanyId) errs.BrokerId = "Courtier ou Compagnie requis";
     if (!invoiceMonth) errs.invoiceMonth = "Mois requis";
     if (!depositDate) errs.depositDate = "Date requise";
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0)
@@ -59,33 +100,31 @@ export const AddInvoiceForm: React.FC<{
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    if (!providerId) {
-      notify(
-        "Impossible de trouver votre compte prestataire. Contactez l'administrateur.",
-        "error"
-      );
-      return;
-    }
+    // Ne bloque pas si l'id prestataire n'est pas encore résolu côté client.
+    // Le backend infèrera le prestataire via l'utilisateur connecté.
     setIsSubmitting(true);
     try {
       const invoiceNumber = `INV-${Date.now()}`;
       const payload: any = {
-        provider_id: providerId,
-        company_id: companyId,
+        // provider_id laissé vide si non résolu; backend le déduira
+        ...(resolvedProviderId ? { provider_id: resolvedProviderId } : {}),
         invoice_number: invoiceNumber,
         invoice_month: parseMonthYearToDate(invoiceMonth),
         billed_amount: parseFloat(amount),
         deposit_date: depositDate || undefined,
       };
-      if (brokerId) payload.broker_id = brokerId;
+
+  if (BrokerId) payload.broker_id = BrokerId;
+  if (CompanyId) payload.company_id = CompanyId;
+
       const newInvoice = await call(
         () => addInvoice(payload),
         "Facture ajoutée"
       );
       if (newInvoice) {
         onAddInvoice(newInvoice);
-        setCompanyId("");
         setBrokerId(null);
+        setCompanyId(null);
         setInvoiceMonth("");
         setDepositDate("");
         setAmount("");
@@ -113,44 +152,47 @@ export const AddInvoiceForm: React.FC<{
       >
         <div>
           <label
-            htmlFor="company"
+            htmlFor="Broker"
             className="block text-sm font-medium text-slate-700 mb-1"
           >
-            Compagnie
+            Courtier (Optionnel)
           </label>
           <select
-            id="company"
-            value={companyId}
-            onChange={(e) => setCompanyId(e.target.value)}
+            id="Broker"
+            value={BrokerId ?? ""}
+            onChange={(e) =>
+              handleBrokerChange(e.target.value ? Number(e.target.value) : null)
+            }
             className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
           >
-            <option value="">Choisir...</option>
+            <option value="">Aucune</option>
             {companies.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
-          {errors.companyId && (
-            <p className="text-red-500 text-xs mt-1">{errors.companyId}</p>
+          {errors.BrokerId && (
+            <p className="text-red-500 text-xs mt-1">{errors.BrokerId}</p>
           )}
         </div>
         <div>
           <label
-            htmlFor="broker"
+            htmlFor="Company"
             className="block text-sm font-medium text-slate-700 mb-1"
           >
-            Courtier (Optionnel)
+            Compagnie (Optionnel)
           </label>
           <select
-            id="broker"
-            value={brokerId || ""}
-            onChange={(e) => setBrokerId(e.target.value || null)}
+            id="Company"
+            value={CompanyId || ""}
+            onChange={(e) =>
+              setCompanyId(e.target.value ? Number(e.target.value) : null)
+            }
             className="w-full p-2 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-            disabled={!companyId}
           >
             <option value="">Aucun</option>
-            {availableBrokers.map((b) => (
+            {filteredCompanys.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>

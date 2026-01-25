@@ -40,19 +40,11 @@ const Payments: React.FC<PaymentsProps> = ({
     monthlyTransactions,
     companies,
     groupedTransactions,
-    brokers,
-    companyMap,
+    Companys,
+    BrokerMap,
   } = usePayments(selectedYear, filters);
 
-  useEffect(() => {
-    console.log("Payments component mounted with selectedYear:", selectedYear);
-    console.log("Initial transactions", transactions);
-    console.log("Initial filters", filters);
-    console.log("Grouped transactions", groupedTransactions);
-    console.log("Monthly transactions", monthlyTransactions);
-    console.log("Companies", companyMap);
-    console.log("Brokers", brokers);
-  }, [selectedYear, transactions]);
+
 
   const handlePageChange = (monthKey: string, newPage: number) => {
     setPageByMonth((prev) => ({ ...prev, [monthKey]: newPage }));
@@ -116,7 +108,7 @@ const Payments: React.FC<PaymentsProps> = ({
                   {c.name}
                 </option>
               ))}
-              {brokers.map((b) => (
+              {Companys.map((b) => (
                 <option key={b.id} value={b.name}>
                   {b.name}
                 </option>
@@ -280,7 +272,24 @@ const Payments: React.FC<PaymentsProps> = ({
                                 {t.providerName}
                               </td>
                             )}
-                            <td className="p-4 font-medium">{t.partnerName}</td>
+                            <td className="p-4 font-medium">
+                              {t.partnerName}
+                              {t.BrokerName && t.CompanyName && (
+                                <span className="text-sm text-slate-500 ml-1">
+                                  ({t.BrokerName} - {t.CompanyName})
+                                </span>
+                              )}
+                              {t.BrokerName && !t.CompanyName && (
+                                <span className="text-sm text-slate-500 ml-1">
+                                  ({t.BrokerName})
+                                </span>
+                              )}
+                              {!t.BrokerName && t.CompanyName && (
+                                <span className="text-sm text-slate-500 ml-1">
+                                  ({t.CompanyName})
+                                </span>
+                              )}
+                            </td>
                             <td className="p-4 text-slate-600">
                               {t.invoiceMonth}
                             </td>

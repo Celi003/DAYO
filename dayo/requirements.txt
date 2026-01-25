@@ -1,0 +1,16 @@
+Django==4.2.14
+djangorestframework==3.14.0
+drf-spectacular==0.27.2
+drf-spectacular-sidecar==2024.5.1
+django-cors-headers==4.4.0
+celery==5.3.6
+redis==5.0.7
+psycopg2-binary==2.9.9
+psycopg==3.1.19
+openpyxl==3.1.5
+reportlab==4.2.2
+pytz==2024.1
+gunicorn==21.2.0
+beautifulsoup4==4.12.2
+
+
